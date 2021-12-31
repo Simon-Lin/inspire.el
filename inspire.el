@@ -27,10 +27,11 @@
 (require 'seq)
 (require 'map)
 (require 'json)
+(require 'bibtex)
 
 (defvar inspire-api-url "https://inspirehep.net/api/")
 
-(defvar inspire-page-limit 10)
+(defvar inspire-query-size 30)
 
 (defvar inspire-entry-list nil)
 
@@ -40,7 +41,7 @@
 
 (defvar inspire-highlight-overlay nil)
 
-(defvar inpsire-use-variable-pitch t)
+(defvar inspire-use-variable-pitch t)
 
 (defvar inspire-buffer nil)
 
@@ -92,14 +93,14 @@
 abstract viewing window."
   :group 'inspire-fontification)
 
-
 (defvar inspire-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "p") 'inspire-prev-entry)
-    (define-key map (kbd "n") 'inspire-next-entry)
+    (define-key map (kbd "i") 'inspire-prev-entry)
+    (define-key map (kbd "k") 'inspire-next-entry)
     (define-key map (kbd "RET") 'inspire-open-current-url)
-    (define-key map (kbd "SPC") 'inspire-select-entry)
+    (define-key map (kbd "SPC") 'inspire-SPC)
     (define-key map (kbd "q") 'inspire-exit)
+    (define-key map (kbd "b") 'inspire-get-bibtex)
     map))
 
 (define-derived-mode inspire-mode special-mode "inspire"
@@ -107,16 +108,24 @@ abstract viewing window."
 ;;  (setq header-line-format '(:eval (arxiv-headerline-format)))
   (setq inspire-highlight-overlay (make-overlay 1 1))
   (setq inspire-current-entry 0)
-  (overlay-put inspire-highlight-overlay 'face '(:inherit highlight :extend t)))
-  ;; (if inspire-use-variable-pitch
-  ;;     (variable-pitch-mode 1)
-  ;;   (variable-pitch-mode -1)))
+  (overlay-put inspire-highlight-overlay 'face '(:inherit highlight :extend t))
+  (if inspire-use-variable-pitch
+      (variable-pitch-mode 1)
+    (variable-pitch-mode -1)))
+
+(define-derived-mode inspire-record-mode special-mode "inspire-record"
+  :group 'inspire
+  (if inspire-use-variable-pitch
+      (variable-pitch-mode 1)
+    (variable-pitch-mode -1)))
+;;  (setq header-line-format '(:eval (arxiv-headerline-format)))
+
 
 (defun inspire-search (query-string)
   (interactive "sSearch on inspirehep: ")
   (if (string-match "^ *$" query-string)
       (message "Search condition cannot be blank.")
-    (setq inspire-entry-list (inspire-parse-literature (concat inspire-api-url "literature?q=" query-string)))
+    (setq inspire-entry-list (inspire-parse-literature (concat inspire-api-url "literature?sort=mostrecent&size=" (format "%s" inspire-query-size) "&q=" query-string)))
     (inspire-populate-page)))
 
 (defun inspire-next-entry (&optional arg)
@@ -132,7 +141,9 @@ With ARG, move to the next nth entry."
   (forward-line (* 4 inspire-current-entry))
   (move-overlay inspire-highlight-overlay
 		(point) (progn (beginning-of-line 5) (point)))
-  (forward-line (- 4))))
+  (forward-line (- 4)))
+  (when (window-live-p inspire-record-window)
+    (inspire-populate-record)))
 
 (defun inspire-prev-entry (&optional arg)
   "Move to the previous arXiv entry.
@@ -146,26 +157,73 @@ With ARG, move to the previous nth entry."
   (forward-line (* 4 inspire-current-entry))
   (move-overlay inspire-highlight-overlay
 		(point) (progn (beginning-of-line 5) (point)))
-  (forward-line (- 4)))
+  (forward-line (- 4))
+  (when (window-live-p inspire-record-window)
+    (inspire-populate-record)))
+
+(defun inspire-SPC ()
+  "Jump to the cursor position or open record window.
+If the cursor position does not correspond to the current entry,
+move the current entry to the corresponding position. Otherwise call
+inspire-toggle-record."
+  (interactive)
+  (if (eq (/ (line-number-at-pos) 4) inspire-current-entry)
+      (inspire-toggle-record)
+    (inspire-select-entry)))
 
 (defun inspire-select-entry ()
-    "Select the entry to which the cursor is pointing to."
-    (interactive)
-    (setq inspire-current-entry (/ (line-number-at-pos) 4))
-    (goto-char (point-min))
-    (forward-line (* 4 inspire-current-entry))
-    (move-overlay inspire-highlight-overlay
-		  (point) (progn (beginning-of-line 5) (point)))
-    (forward-line (- 4)))
+  "Select the entry to which the cursor is pointing to."
+  (setq inspire-current-entry (/ (line-number-at-pos) 4))
+  (goto-char (point-min))
+  (forward-line (* 4 inspire-current-entry))
+  (move-overlay inspire-highlight-overlay
+		(point) (progn (beginning-of-line 5) (point)))
+  (forward-line (- 4))
+  (when (window-live-p inspire-record-window)
+    (inspire-populate-record)))
 
-(defun inspire-show-record ()
+(defun inspire-toggle-record ()
+  (if (window-live-p inspire-record-window)
+      (delete-window inspire-record-window)
+    (inspire-populate-record)))
+
+(defun inspire-open-current-url ()
   (interactive)
+  (browse-url (format "https://inspirehep.net/literature/%s" (alist-get 'inspire-id (nth inspire-current-entry inspire-entry-list)))))
+
+(defun inspire-get-bibtex ()
+  (interactive)
+  (let ((url (alist-get 'bib-link (nth inspire-current-entry inspire-entry-list))))
+    (select-window inspire-record-window)
+    (pop-to-buffer "*inspire-bibTeX*" '(display-buffer-below-selected))
+    (erase-buffer)
+    (url-insert (url-retrieve-synchronously url))
+    (setq buffer-read-only nil)
+    (bibtex-mode)
+    (bibtex-set-dialect 'BibTeX t)))
+
+(defun inspire-exit ()
+  "Quit inspire-mode and kill all related buffers."
+  (interactive)
+  (when (window-live-p inspire-record-window)
+    (quit-restore-window inspire-record-window 'kill)
+    (setq inspire-record-window nil))
+  (kill-buffer "*inspire-search*")
+  (when (get-buffer "*inspire-record*")
+    (kill-buffer "*inspire-record*"))
+  (setq inspire-record-buffer nil))
+
+(defun inspire-populate-record ()
   (unless (buffer-live-p inspire-record-buffer)
     (setq inspire-record-buffer (get-buffer-create "*inspire-record*")))
   (unless (window-live-p inspire-record-window)
     (setq inspire-record-window (display-buffer "*inspire-record*" t)))
-  (inspire-fill-record (nth inspire-current-entry inspire-entry-list)))
-
+  (with-current-buffer inspire-record-buffer
+    (inspire-record-mode)
+    (let ((buffer-read-only nil))
+      (erase-buffer)      
+      (inspire-fill-record (nth inspire-current-entry inspire-entry-list)))))
+  
 (defun inspire-populate-page (&optional inspire-buffer)
   (if inspire-entry-list
       (progn
@@ -180,7 +238,7 @@ With ARG, move to the previous nth entry."
 	  (move-overlay inspire-highlight-overlay
 			(point) (progn (beginning-of-line 5) (point)))
 	  (goto-char (point-min)))
-	(switch-to-buffer-other-window inspire-buffer))
+	(switch-to-buffer inspire-buffer))
     (message "No matching search result.")))
 
 (defun inspire-insert-with-face (str face &rest properties)
@@ -197,29 +255,36 @@ With ARG, move to the previous nth entry."
     (inspire-insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) inspire-date-face)))
 
 (defun inspire-fill-record (entry)
-  (with-current-buffer inspire-record-buffer
-    (inspire-insert-with-face (format "\n %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.5))
-    (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
-	(inspire-insert-with-face
-	 (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") (:inherit inspire-author-face :height 1.2))
-      (inspire-insert-with-face (mapconcat (lambda (author) ; author list
-					     (format "%s (%s)"
-						     (alist-get 'name author)
-						     (mapconcat 'identity (alist-get 'affiliation author) ", ")))
-					   (alist-get 'authors entry) ", ") '(:inherit inspire-author-face :height 1.2)))
-    (inspire-insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) '(:inherit inspire-date-face :height 1.2))
-    
-    (when-let (journals (alist-get 'journals entry))
-      (inspire-insert-with-face (format "Published in: %s.\n" (mapconcat 'identity journals ", ")) inspire-subfield-face))
-    (when-let (conferences (alist-get 'conferences entry))
-      (inspire-insert-with-face (format "Contribution to: %s.\n" (mapconcat 'identity conferences ", ")) inspire-subfield-face))
-    (when-let (eprint (alist-get 'eprint entry))
-      (inspire-insert-with-face (format "e-print: %s\n" eprint) inspire-subfield-face))
-    (insert "\n\n")
-    ;; DOI
-    ;; abstracts
-    ;; citations
-  ))
+  (inspire-insert-with-face (format "\n%s\n" (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.3))
+  (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
+      (inspire-insert-with-face
+       (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
+    (inspire-insert-with-face (mapconcat (lambda (author) ; author list
+					   (concat (format "%s" (alist-get 'name author))
+						   (when (alist-get 'affiliation author)
+						     (format " (%s)" (mapconcat 'identity (alist-get 'affiliation author) ", ")))))
+					 (alist-get 'authors entry) ", ") inspire-author-face))
+  (inspire-insert-with-face (format "\n%s\n\n" (alist-get 'date entry)) inspire-date-face)
+  
+  ;; pages and publication info
+  (inspire-insert-with-face (format "%s Pages, %s Citations\n" (alist-get 'number-of-pages entry) (alist-get 'citation-count entry)) inspire-subfield-face)
+  (inspire-insert-with-face (format "Type: %s\n" (alist-get 'type entry)) inspire-subfield-face)
+  (when-let (journals (alist-get 'journals entry))
+    (inspire-insert-with-face (format "Published in: %s\n" (mapconcat 'identity journals ", ")) inspire-subfield-face))
+  (when-let (conferences (alist-get 'conferences entry))
+    (inspire-insert-with-face (format "Contribution to: %s\n" (mapconcat 'identity conferences ", ")) inspire-subfield-face))
+  (when-let (eprint (alist-get 'eprint entry))
+    (inspire-insert-with-face (format "e-print: %s\n" eprint) inspire-subfield-face))
+  (when-let (dois (alist-get 'dois entry))
+    (inspire-insert-with-face (format "DOI: %s\n" (mapconcat 'identity dois ", ")) inspire-subfield-face))
+  (insert "\n")
+
+  ;; abstract
+  (when-let (abstract (alist-get 'abstract entry))
+    (inspire-insert-with-face (format "Abstract:\n%s\n\n" abstract) inspire-abstract-face))  
+  
+  ;; references?
+  )
 
 (defun inspire-parse-literature (url)
   "Call inspire hep to search for literatures. 
@@ -237,7 +302,8 @@ Parse the returned results into a list."
 	    (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (abstract) (eprint) (citation-count) (number-of-pages) (type) (inspire-id))
 	(setq bib-link (map-nested-elt entry '(links bibtex)))
 	(setq title (map-nested-elt metadata '(titles 0 title)))
-	(setq date (map-nested-elt metadata '(preprint_date)))
+	(setq date (or (map-nested-elt metadata '(preprint_date))
+		       (map-nested-elt metadata '(imprints 0 date))))
 	(setq abstract (map-nested-elt metadata '(abstracts 0 value)))
 	(setq dois (mapcar (lambda (elem) (alist-get 'value elem)) (alist-get 'dois metadata)))
 	(setq eprint (map-nested-elt metadata '(arxiv_eprints 0 value)))
@@ -259,7 +325,9 @@ Parse the returned results into a list."
 			 (jvol (alist-get 'journal_volume pub))
 			 (pstart (alist-get 'page_start pub))
 			 (pend (alist-get 'page_end pub)))
-		     (setq journals (cons (format "%s %s (%s) %s-%s" jtitle jvol jyear pstart pend) journals))))
+		     (cond ((eval pend) (setq journals (cons (format "%s %s (%s) %s-%s" jtitle jvol jyear pstart pend) journals)))
+			   ((eval pstart) (setq journals (cons (format "%s %s (%s) %s" jtitle jvol jyear pstart) journals)))
+			   (t (setq journals (cons (format "%s %s (%s)" jtitle jvol jyear) journals))))))
 		  ((alist-get 'cnum pub)    ; conference
 		   (setq conferences (cons (format "%s" (alist-get 'cnum pub)) conferences)))
 		  )))
