@@ -62,6 +62,12 @@
   "Face name for keywords in the inspire article list."
   :group 'inspire-fontification)
 
+(defvar inspire-link-face 'inspire-link-face)
+(defface inspire-link-face
+  '((t (:inherit button)))
+  "Face name for keywords in the inspire article list."
+  :group 'inspire-fontification)
+
 (defvar inspire-author-face 'inspire-author-face)
 (defface inspire-author-face
   '((t (:inherit font-lock-type-face)))
@@ -244,18 +250,30 @@ inspire-toggle-record."
 (defun inspire-insert-with-face (str face &rest properties)
   (insert (apply 'propertize `(,str font-lock-face ,face ,@properties))))
 
+(defun inspire-insert-url (str url)
+  (insert-button str
+		 'action (lambda (x) (browse-url (button-get x 'url)))			
+		 'face 'inspire-link-face
+		 'mouse-face 'highlight
+		 'follow-link t
+		 'help-echo (format "Link: %s" url)
+		 'url url))  
+
 (defun inspire-fill-page ()
   (dolist (entry inspire-entry-list)
     (inspire-insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.2))
     (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
 	(inspire-insert-with-face
 	 (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
-      (inspire-insert-with-face  ; authors list
-       (mapconcat (lambda (author) (alist-get 'name author)) (alist-get 'authors entry) ", ") inspire-author-face))
+      (let ((names (mapcar (lambda (author) (alist-get 'name author)) (alist-get 'authors entry))))
+	(inspire-insert-with-face (mapconcat 'identity (seq-take names 5) ", ") inspire-author-face)
+	(when (> (length names) 5)
+	  (inspire-insert-with-face " et al." inspire-author-face))))
     (inspire-insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) inspire-date-face)))
 
 (defun inspire-fill-record (entry)
   (inspire-insert-with-face (format "\n%s\n" (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.3))
+  (inspire-insert-with-face "\n" inspire-title-face)  
   (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
       (inspire-insert-with-face
        (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
@@ -267,21 +285,31 @@ inspire-toggle-record."
   (inspire-insert-with-face (format "\n%s\n\n" (alist-get 'date entry)) inspire-date-face)
   
   ;; pages and publication info
-  (inspire-insert-with-face (format "%s Pages, %s Citations\n" (alist-get 'number-of-pages entry) (alist-get 'citation-count entry)) inspire-subfield-face)
+  (when-let (pages (alist-get 'number-of-pages entry))
+    (inspire-insert-with-face (format "%s Pages, " pages) inspire-subfield-face))
+  (inspire-insert-with-face (format "%s Citations\n"  (alist-get 'citation-count entry)) inspire-subfield-face)
   (inspire-insert-with-face (format "Type: %s\n" (alist-get 'type entry)) inspire-subfield-face)
   (when-let (journals (alist-get 'journals entry))
     (inspire-insert-with-face (format "Published in: %s\n" (mapconcat 'identity journals ", ")) inspire-subfield-face))
   (when-let (conferences (alist-get 'conferences entry))
     (inspire-insert-with-face (format "Contribution to: %s\n" (mapconcat 'identity conferences ", ")) inspire-subfield-face))
   (when-let (eprint (alist-get 'eprint entry))
-    (inspire-insert-with-face (format "e-print: %s\n" eprint) inspire-subfield-face))
-  (when-let (dois (alist-get 'dois entry))
-    (inspire-insert-with-face (format "DOI: %s\n" (mapconcat 'identity dois ", ")) inspire-subfield-face))
-  (insert "\n")
+    (inspire-insert-with-face "e-print: " inspire-subfield-face)    
+    (inspire-insert-url (alist-get 'value eprint) (format "https://arxiv.org/abs/%s" (alist-get 'value eprint)))
+    (inspire-insert-with-face (format " [%s]\n" (map-nested-elt eprint '(categories 0))) inspire-subfield-face))
+  (when-let (dois (alist-get 'dois entry))    
+    (inspire-insert-with-face "DOI: " inspire-subfield-face)
+    (seq-doseq (doi dois)
+      (inspire-insert-url doi (format "https://doi.org/%s" doi))
+      (inspire-insert-with-face ", " inspire-subfield-face))
+    (delete-backward-char 2))
+  (insert "\n\n")
 
-  ;; abstract
+  ;; abstract & notes
   (when-let (abstract (alist-get 'abstract entry))
-    (inspire-insert-with-face (format "Abstract:\n%s\n\n" abstract) inspire-abstract-face))  
+    (inspire-insert-with-face (format "Abstract: (%s)\n%s\n\n" (alist-get 'source abstract) (alist-get 'value abstract)) inspire-abstract-face))
+  (when-let (notes (alist-get 'note entry))
+    (inspire-insert-with-face (format "Note: %s\n\n" notes) inspire-abstract-face))
   
   ;; references?
   )
@@ -299,14 +327,15 @@ Parse the returned results into a list."
 	 (alist-entry) (alist-formed '()))    
     (seq-doseq (entry hits)
       (let ((metadata (alist-get 'metadata entry))
-	    (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (abstract) (eprint) (citation-count) (number-of-pages) (type) (inspire-id))
+	    (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (abstract) (eprint) (citation-count) (number-of-pages) (type) (inspire-id) (notes))
 	(setq bib-link (map-nested-elt entry '(links bibtex)))
 	(setq title (map-nested-elt metadata '(titles 0 title)))
-	(setq date (or (map-nested-elt metadata '(preprint_date))
+	(setq date (or (map-nested-elt metadata '(earliest_date))
+		       (map-nested-elt metadata '(preprint_date))
 		       (map-nested-elt metadata '(imprints 0 date))))
-	(setq abstract (map-nested-elt metadata '(abstracts 0 value)))
-	(setq dois (mapcar (lambda (elem) (alist-get 'value elem)) (alist-get 'dois metadata)))
-	(setq eprint (map-nested-elt metadata '(arxiv_eprints 0 value)))
+	(setq abstract (map-nested-elt metadata '(abstracts 0)))
+	(setq dois (seq-uniq (mapcar (lambda (elem) (alist-get 'value elem)) (alist-get 'dois metadata))))
+	(setq eprint (map-nested-elt metadata '(arxiv_eprints 0)))
 	(setq citation-count (alist-get 'citation_count metadata))
 	(setq number-of-pages (alist-get 'number_of_pages metadata))
 	(setq inspire-id (alist-get 'id entry))
@@ -331,6 +360,8 @@ Parse the returned results into a list."
 		  ((alist-get 'cnum pub)    ; conference
 		   (setq conferences (cons (format "%s" (alist-get 'cnum pub)) conferences)))
 		  )))
+	(setq note (when-let (raw (map-nested-elt metadata '(public_notes 0 value)))
+		     (replace-regexp-in-string "\n" "" raw))) ; strip off extra EOLs
 	(setq type (map-nested-elt metadata '(document_type 0)))
 	
 	(setq alist-entry `((title . ,title)
@@ -342,6 +373,7 @@ Parse the returned results into a list."
 			    (dois . ,dois)
 			    (bib-link . ,bib-link)
 			    (abstract . ,abstract)
+			    (note . ,note)
 			    (eprint . ,eprint)
 			    (citation-count . ,citation-count)
 			    (number-of-pages . ,number-of-pages)
