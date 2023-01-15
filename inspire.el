@@ -1,6 +1,6 @@
 ;;; inspire.el --- Emacs interface for inspirehep.net  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Simon Lin
+;; Copyright (C) 2023  Simon Lin
 
 ;; Author: Simon Lin <n.sibetz@gmail.com>
 ;; Keywords: extensions, tex
@@ -33,6 +33,12 @@
 
 (defvar inspire-query-size 30)
 
+(defvar inspire-query-string nil)
+
+(defvar inspire-query-history nil)
+
+(defvar inspire-query-total-hits nil)
+
 (defvar inspire-entry-list nil)
 
 (defvar inspire-current-entry nil)
@@ -44,6 +50,14 @@
 (defvar inspire-highlight-overlay nil)
 
 (defvar inspire-use-variable-pitch t)
+
+(defvar inspire-pop-up-new-frame t)
+
+(defvar inspire-new-frame-width 200)
+
+(defvar inspire-new-frame-height 80)
+
+(defvar inspire-frame nil)
 
 (defvar inspire-buffer nil)
 
@@ -103,8 +117,7 @@
 (defvar inspire-abstract-math-face 'inspire-abstract-math-face)
 (defface inspire-abstract-math-face
   '((t (:inherit font-lock-reference-face :family "Monospace")))
-  "Face name for the latex content in abstract in the inspire
-abstract viewing window."
+  "Face name for the latex content in abstract in the inspire abstract viewing window."
   :group 'inspire-fontification)
 
 (defvar inspire-author-heading-face 'inspire-author-heading-face)
@@ -136,10 +149,23 @@ abstract viewing window."
     (define-key map (kbd "b") 'inspire-get-bibtex)
     map))
 
+(defvar inspire-record-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") 'inspire-open-current-url)
+    (define-key map (kbd "q") 'inspire-exit)
+    (define-key map (kbd "b") 'inspire-get-bibtex)
+    map))
+
+(defvar inspire-author-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") 'inspire-open-current-url)
+    (define-key map (kbd "q") 'inspire-exit)
+    map))
+
 (define-derived-mode inspire-mode special-mode "inspire"
   :group 'inspire
-;;  (setq header-line-format '(:eval (arxiv-headerline-format)))
-  (setq inspire-highlight-overlay (make-overlay 1 1))
+  ;; :interactive nil
+  (setq header-line-format '(:eval (inspire--headerline-format)))
   (setq inspire-current-entry 0)
   (overlay-put inspire-highlight-overlay 'face '(:inherit highlight :extend t))
   (if inspire-use-variable-pitch
@@ -148,6 +174,7 @@ abstract viewing window."
 
 (define-derived-mode inspire-record-mode special-mode "inspire-record"
   :group 'inspire
+  :interactive nil
   (if inspire-use-variable-pitch
       (variable-pitch-mode 1)
     (variable-pitch-mode -1)))
@@ -155,6 +182,7 @@ abstract viewing window."
 
 (define-derived-mode inspire-author-mode special-mode "inspire-author"
   :group 'inspire
+  :interactive nil
   (if inspire-use-variable-pitch
       (variable-pitch-mode 1)
     (variable-pitch-mode -1)))
@@ -164,6 +192,12 @@ abstract viewing window."
   (if (string-match "^ *$" query-string)
       (message "Search condition cannot be blank.")
     (setq inspire-entry-list (inspire-parse-literature (concat inspire-api-url "literature?sort=mostrecent&size=" (format "%s" inspire-query-size) "&q=" query-string)))
+    (setq inspire-query-string query-string)
+    (when inspire-pop-up-new-frame
+      (unless (frame-live-p inspire-frame)
+	(setq inspire-frame
+	      (make-frame `((name . "*inspirehep*") (width . ,inspire-new-frame-width) (height . ,inspire-new-frame-height)))))
+      (select-frame  inspire-frame))
     (inspire-populate-page)
     (inspire-populate-record)))
 
@@ -187,20 +221,25 @@ abstract viewing window."
 					 (match-string-no-properties 1 selected)
 					 (alist-get 'inspire-bai x)))
 				 authors))
+      (when inspire-pop-up-new-frame
+	(unless (frame-live-p inspire-frame)
+	  (setq inspire-frame
+		(make-frame `((name . "*inspirehep*") (width . ,inspire-new-frame-width) (height . ,inspire-new-frame-height)))))
+	(select-frame  inspire-frame))
       (inspire-populate-author-data)
       
       ;; search and display authored literature
+      (setq inspire-query-string (format "a= %s" (alist-get 'inspire-bai inspire-author-data)))
       (setq inspire-entry-list
 	    (inspire-parse-literature
-	     (format "%sliterature?sort=mostrecent&size=%s&q=a %s" inspire-api-url inspire-query-size (alist-get 'inspire-bai inspire-author-data))))
+	     (format "%sliterature?sort=mostrecent&size=%s&q=%s" inspire-api-url inspire-query-size inspire-query-string)))
       (setq inspire-current-entry 0)
       (inspire-populate-record)
       (unless (window-live-p inspire-window)
-	(setq inspire-window (display-buffer (get-buffer-create "*inspire-search*") '(display-buffer-below-selected . ((window-height . .5))))))
+	(setq inspire-window (display-buffer (get-buffer-create "*inspire-search*") '(display-buffer-below-selected . ((window-height . .6))))))
       (select-window inspire-window)
       (inspire-populate-page))))
  
-
 (defun inspire--author-format-completion-string (author-alist)
   (let ((name (alist-get 'name author-alist))
 	(key  (alist-get 'inspire-bai author-alist))
@@ -220,22 +259,39 @@ abstract viewing window."
 	    (truncate-string-to-width cat  40 nil ?\s) "\t"
 	    key)))
 
+(defun inspire--headerline-format ()
+  "Update the header line of *inspire-search* buffer."
+  (let* ((entry (format "%d/%d" (+ 1 inspire-current-entry) inspire-query-total-hits))
+	 (info-width (- (window-total-width) (length entry) 2)))
+    (list
+     (list (- info-width)
+	   (format " search results for: %s" inspire-query-string)
+	   (propertize " " 'display `(space :align-to ,info-width))
+	   entry))))
+
 (defun inspire-next-entry (&optional arg)
   "Move to the next inspire entry.
 With ARG, move to the next nth entry."
   (interactive "p")
   (setq inspire-current-entry (+ inspire-current-entry arg))
-  (let ((len (- (safe-length inspire-entry-list) 1)))
-    (when (> inspire-current-entry len)
-      (setq inspire-current-entry (- (safe-length inspire-entry-list) 1))
-      (message "end of search results"))
-  (goto-char (point-min))
-  (forward-line (* 4 inspire-current-entry))
-  (move-overlay inspire-highlight-overlay
-		(point) (progn (beginning-of-line 5) (point)))
-  (forward-line (- 4)))
-  (when (window-live-p inspire-record-window)
-    (inspire-populate-record)))
+  (let ((len (safe-length inspire-entry-list)))
+    (when (> inspire-current-entry (1- len))
+      (when (< len inspire-query-total-hits)
+	(inspire-show-next-page)
+	(setq len (safe-length inspire-entry-list)))
+      (when (>= inspire-current-entry len)
+	(setq inspire-current-entry (1- len))
+	(message "end of search results")))
+    (goto-char (point-min))
+    (forward-line (* 4 inspire-current-entry))
+    (move-overlay inspire-highlight-overlay
+		  (point) (progn (beginning-of-line 5) (point)))
+    (forward-line (- 4))
+    (inspire-populate-record)
+    (when (= inspire-current-entry (1- len)) ; pre-render next page when the last result is selected
+      (redisplay t)
+      (when (< len inspire-query-total-hits)
+	(inspire-show-next-page)))))
 
 (defun inspire-prev-entry (&optional arg)
   "Move to the previous inspire entry.
@@ -250,8 +306,7 @@ With ARG, move to the previous nth entry."
   (move-overlay inspire-highlight-overlay
 		(point) (progn (beginning-of-line 5) (point)))
   (forward-line (- 4))
-  (when (window-live-p inspire-record-window)
-    (inspire-populate-record)))
+  (inspire-populate-record))
 
 (defun inspire-select-entry ()
   "Select the entry to which the cursor is pointing to."
@@ -264,6 +319,26 @@ With ARG, move to the previous nth entry."
   (forward-line (- 4))
   (when (window-live-p inspire-record-window)
     (inspire-populate-record)))
+
+(defun inspire-show-next-page ()
+  (interactive)
+  "Perform one more query and fill the results into buffer.
+\(according to `inspire-current-entry' and `inspire-entries-per-fetch')"
+  (let* ((page   (/ (1+ inspire-current-entry) inspire-query-size))
+	 (lbound (1+ (* inspire-query-size page)))
+	 (ubound (min (* inspire-query-size (1+ page)) inspire-query-total-hits)))
+    (message "Fetching results %d-%d..." lbound ubound)
+    (setq inspire-entry-list
+	  (append inspire-entry-list
+		  (inspire-parse-literature
+		   (format "%sliterature?sort=mostrecent&size=%s&page=%s&q=%s"
+			   inspire-api-url
+			   inspire-query-size
+			   (1+ page)
+			   inspire-query-string))))
+    (save-excursion
+      (goto-char (point-max))
+      (inspire-fill-page (1- lbound)))))
 
 (defun inspire-open-current-url ()
   (interactive)
@@ -295,7 +370,8 @@ With ARG, move to the previous nth entry."
   (when inspire-author-buffer (kill-buffer inspire-author-buffer))
   (setq inspire-record-buffer nil)
   (setq inspire-author-buffer nil)
-  (setq inspire-window nil))
+  (setq inspire-window nil)
+  (setq inspire-frame nil))
 
 (defun inspire-populate-record ()
   (unless (buffer-live-p inspire-record-buffer)
@@ -306,7 +382,8 @@ With ARG, move to the previous nth entry."
     (inspire-record-mode)
     (let ((buffer-read-only nil))
       (erase-buffer)
-      (inspire-fill-record (nth inspire-current-entry inspire-entry-list)))))
+      (inspire-fill-record (nth inspire-current-entry inspire-entry-list)))
+    (set-window-dedicated-p inspire-record-window t)))
   
 (defun inspire-populate-page ()
   (if inspire-entry-list
@@ -323,7 +400,8 @@ With ARG, move to the previous nth entry."
 			  (point) (progn (beginning-of-line 5) (point)))
 	    (goto-char (point-min))))
 	(switch-to-buffer inspire-buffer)
-	(setq inspire-window (get-buffer-window)))
+	(setq inspire-window (get-buffer-window))
+	(set-window-dedicated-p inspire-window t))
     (message "No matching search result.")))
 
 (defun inspire-populate-author-data ()
@@ -336,9 +414,13 @@ With ARG, move to the previous nth entry."
       (inspire-fill-author-data))
     (goto-char (point-min)))
   (switch-to-buffer inspire-author-buffer)
-  (setq inspire-author-window (get-buffer-window)))
+  (setq inspire-author-window (get-buffer-window))
+  (set-window-dedicated-p inspire-author-window t))
 
 (defun inspire-fill-author-data ()
+  ;; headerline
+  (setq header-line-format (format " author/%s" (alist-get 'control-number inspire-author-data)))
+  
   ;; name and current positions
   (inspire-insert-with-face (format "\n%s" (alist-get 'name inspire-author-data)) '(:inherit inspire-author-heading-face :height 1.2))
   (when-let ((alt-name (alist-get 'native-names inspire-author-data)))
@@ -394,19 +476,26 @@ With ARG, move to the previous nth entry."
 		 'help-echo (format "Link: %s" url)
 		 'url url))
 
-(defun inspire-fill-page ()
-  (dolist (entry inspire-entry-list)
-    (inspire-insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.2))
-    (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
-	(inspire-insert-with-face
-	 (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
-      (let ((names (mapcar (lambda (author) (alist-get 'name author)) (alist-get 'authors entry))))
-	(inspire-insert-with-face (mapconcat 'identity (seq-take names 5) ", ") inspire-author-face)
-	(when (> (length names) 5)
-	  (inspire-insert-with-face " et al." inspire-author-face))))
-    (inspire-insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) inspire-date-face)))
+(defun inspire-fill-page (&optional start-entry)  
+  (seq-do-indexed
+   (lambda (entry index)
+     (unless (and start-entry (< index start-entry))
+       (inspire-insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.2))
+       (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
+	   (inspire-insert-with-face
+	    (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
+	 (let ((names (mapcar (lambda (author) (alist-get 'name author)) (alist-get 'authors entry))))
+	   (inspire-insert-with-face (mapconcat 'identity (seq-take names 5) ", ") inspire-author-face)
+	   (when (> (length names) 5)
+	     (inspire-insert-with-face " et al." inspire-author-face))))
+       (inspire-insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) inspire-date-face)))
+   inspire-entry-list))
 
 (defun inspire-fill-record (entry)
+  ;; headerline
+  (setq header-line-format (format " literature/%s" (alist-get 'inspire-id entry)))
+
+  ;; title and authors
   (inspire-insert-with-face (format "\n%s\n" (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.3))
   (inspire-insert-with-face "\n" inspire-title-face)  
   (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
@@ -430,14 +519,16 @@ With ARG, move to the previous nth entry."
   (when-let (eprint (alist-get 'eprint entry))
     (inspire-insert-with-face "e-print: " inspire-subfield-face)    
     (inspire-insert-url (alist-get 'value eprint) (format "https://arxiv.org/abs/%s" (alist-get 'value eprint)))
-    (inspire-insert-with-face (format " [%s]\n" (map-nested-elt eprint '(categories 0))) inspire-subfield-face))
+    (inspire-insert-with-face (format " [%s]\n" (map-nested-elt eprint '(categories 0))) inspire-arxiv-category-face))
   (when-let (dois (alist-get 'dois entry))    
     (inspire-insert-with-face "DOI: " inspire-subfield-face)
     (seq-doseq (doi dois)
       (inspire-insert-url doi (format "https://doi.org/%s" doi))
       (inspire-insert-with-face ", " inspire-subfield-face))
-    (delete-backward-char 2))
-  (insert "\n\n")
+    (delete-char -2)
+    (insert "\n"))
+  (inspire-insert-with-face (format "Texkey: %s\n" (alist-get 'bib-key entry)) inspire-subfield-face)
+  (insert "\n")
 
   ;; abstract & notes
   (when-let (abstract (alist-get 'abstract entry))
@@ -446,8 +537,21 @@ With ARG, move to the previous nth entry."
     (inspire-insert-with-face (format "Note: %s\n\n" notes) inspire-abstract-face))
   
   ;; citations & references
-  (inspire-insert-with-face (format "%s References,\t"  (alist-get 'reference-count entry)) inspire-subfield-face)
-  (inspire-insert-with-face (format "%s Citations\n"  (alist-get 'citation-count entry)) inspire-subfield-face))
+  (insert-button (format "%s References"  (alist-get 'reference-count entry))
+		 'action (lambda (x) (inspire-literature-search (button-get x 'url)))
+		 'face 'inspire-link-face
+		 'mouse-face 'highlight
+		 'follow-link t
+		 'help-echo "reference search"
+		 'url (format "citedby:recid:%s" (alist-get 'inspire-id entry)))
+  (insert ",  ")
+  (insert-button (format "%s Citations"  (alist-get 'citation-count entry))
+		 'action (lambda (x) (inspire-literature-search (button-get x 'url)))
+		 'face 'inspire-link-face
+		 'mouse-face 'highlight
+		 'follow-link t
+		 'help-echo "citation search"
+		 'url (format "refersto:recid:%s" (alist-get 'inspire-id entry))))
 
 (defun inspire-reorder-name (full-name)
   (if (string-match "^\\(.+\\), \\(.+\\)$" full-name)
@@ -468,8 +572,10 @@ Parse the returned results into a list."
 	   (alist-entry) (alist-formed '()))    
       (seq-doseq (entry hits)
 	(let ((metadata (alist-get 'metadata entry))
-	      (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
+	      (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
+	  (setq inspire-query-total-hits total)
 	  (setq bib-link (map-nested-elt entry '(links bibtex)))
+	  (setq bib-key (map-nested-elt metadata '(texkeys 0)))
 	  (setq title (map-nested-elt metadata '(titles 0 title)))
 	  (setq date (or (map-nested-elt metadata '(earliest_date))
 			 (map-nested-elt metadata '(preprint_date))
@@ -512,6 +618,7 @@ Parse the returned results into a list."
 			      (conferences . ,(nreverse conferences))
 			      (dois . ,dois)
 			      (bib-link . ,bib-link)
+			      (bib-key . ,bib-key)
 			      (abstract . ,abstract)
 			      (note . ,note)
 			      (eprint . ,eprint)
