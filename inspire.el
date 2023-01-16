@@ -232,7 +232,9 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
   :group 'inspire
   :interactive nil
   (setq header-line-format '(:eval (inspire--headerline-format)))
+  (setq inspire-highlight-overlay (make-overlay 1 1))
   (overlay-put inspire-highlight-overlay 'face '(:inherit highlight :extend t))
+  (setq inspire-current-entry 0)
   (if inspire-use-variable-pitch
       (variable-pitch-mode 1)
     (variable-pitch-mode -1)))
@@ -266,6 +268,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 
 ;; entry functions
 
+;;;###autoload
 (defun inspire-literature-search (query-string)
   "Search for literature on inspirehep.net with QUERY-STRING.
 List the results in a new buffer."
@@ -287,6 +290,7 @@ List the results in a new buffer."
 	  (inspire-populate-record))
       (message "No matching search result."))))
 
+;;;###autoload
 (defun inspire-author-search (query-string)
   "Search for a particular author on inspirehep.net with QUERY-STRING.
 List the author details and their publication in a new buffer."
@@ -318,7 +322,6 @@ List the author details and their publication in a new buffer."
 	    (inspire-parse-literature
 	     (format "%sliterature?sort=mostrecent&size=%s&q=%s" inspire-api-url inspire-query-size inspire-query-string)))
       (inspire--push-to-history)
-      (setq inspire-current-entry 0)
       (inspire-populate-page)
       (inspire-populate-record))))
  
