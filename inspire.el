@@ -197,8 +197,8 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 
 (defvar inspire-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "i") 'inspire-prev-entry)
-    (define-key map (kbd "k") 'inspire-next-entry)
+    (define-key map (kbd "p") 'inspire-prev-entry)
+    (define-key map (kbd "n") 'inspire-next-entry)
     (define-key map (kbd "RET") '("Switch to record window."
 				  . (lambda () (interactive) (select-window inspire-record-window))))
     (define-key map (kbd "u") 'inspire-open-url)
@@ -212,6 +212,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 (defvar inspire-record-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") 'inspire-open-url)
+    (define-key map (kbd "u") 'inspire-open-url)
     (define-key map (kbd "q") 'inspire-exit)
     (define-key map (kbd "b") 'inspire-get-bibtex)
     (define-key map (kbd "\[") 'inspire-previous-search)
@@ -221,6 +222,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 (defvar inspire-author-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") 'inspire-open-url)
+    (define-key map (kbd "u") 'inspire-open-url)
     (define-key map (kbd "q") 'inspire-exit)
     (define-key map (kbd "\[") 'inspire-previous-search)
     (define-key map (kbd "\]") 'inspire-next-search)
