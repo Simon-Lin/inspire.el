@@ -144,39 +144,53 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 
 ;;; variables
 
-(defconst inspire-api-url "https://inspirehep.net/api/")
+(defconst inspire-api-url "https://inspirehep.net/api/"
+  "The url address for inspirehep API.")
 
-(defvar inspire-query-string nil)
+(defvar inspire-query-string nil
+  "The string used for inspire literature search.")
 
-(defvar inspire-query-history nil)
+(defvar inspire-query-history nil
+  "A list storing the past history of inspire searches.")
 
-(defvar inspire-history-index 0)
+(defvar inspire-history-index 0
+  "Index of currently displayed entry in `inspire-query-history'.")
 
-(defvar inspire-query-total-hits nil)
+(defvar inspire-query-total-hits nil
+  "Total number of matching search results for inspire literature search.")
 
-(defvar inspire-entry-list nil)
+(defvar inspire-entry-list nil
+  "Entry list of inspire literature.")
 
-(defvar inspire-current-entry nil)
+(defvar inspire-current-entry 0
+  "Index of currently displayed record in `inspire-entry-list'.")
 
-(defvar inspire-search-type nil)
+(defvar inspire-author-data nil
+  "A alist containing the current inspire author information.")
 
-(defvar inspire-author-data nil)
+(defvar inspire-highlight-overlay nil
+  "Overlay for displaying the selected record in inspire record list.")
 
-(defvar inspire-highlight-overlay nil)
+(defvar inspire-frame nil
+  "Current frame used for displaying inspire-mode buffers.")
 
-(defvar inspire-frame nil)
+(defvar inspire-search-buffer nil
+  "Current buffer for displaying inspire search results.")
 
-(defvar inspire-buffer nil)
+(defvar inspire-search-window nil
+  "Current window for displaying inspire search results.")
 
-(defvar inspire-window nil)
+(defvar inspire-record-buffer nil
+  "Current buffer for displaying inspire record information.")
 
-(defvar inspire-record-buffer nil)
+(defvar inspire-record-window nil
+  "Current window for displaying inspire record information.")
 
-(defvar inspire-record-window nil)
+(defvar inspire-author-buffer nil
+  "Current buffer for displaying inspire author information.")
 
-(defvar inspire-author-buffer nil)
-
-(defvar inspire-author-window nil)
+(defvar inspire-author-window nil
+  "Current window for displaying inspire author information.")
 
 
 ;;; mode definition
@@ -216,7 +230,6 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
   :group 'inspire
   :interactive nil
   (setq header-line-format '(:eval (inspire--headerline-format)))
-  (setq inspire-current-entry 0)
   (overlay-put inspire-highlight-overlay 'face '(:inherit highlight :extend t))
   (if inspire-use-variable-pitch
       (variable-pitch-mode 1)
@@ -252,6 +265,8 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 ;; entry functions
 
 (defun inspire-literature-search (query-string)
+  "Search for literature on inspirehep.net with QUERY-STRING.
+List the results in a new buffer."
   (interactive "sSearch for literature on inspirehep: ")
   (if (string-match "^ *$" query-string)
       (message "Search condition cannot be blank.")
@@ -271,6 +286,8 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
       (message "No matching search result."))))
 
 (defun inspire-author-search (query-string)
+  "Search for a particular author on inspirehep.net with QUERY-STRING.
+List the author details and their publication in a new buffer."
   (interactive "sSearch for author on inspirehep: ")
   (if (string-match "^ *$" query-string)
       (message "Search condition cannot be blank.")
@@ -304,6 +321,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
       (inspire-populate-record))))
  
 (defun inspire--author-format-completion-string (author-alist)
+  "Format the entry for `completing-read' from AUTHOR-ALIST."
   (let ((name (alist-get 'name author-alist))
 	(key  (alist-get 'inspire-bai author-alist))
 	(pos  (alist-get 'current-position author-alist))
@@ -323,6 +341,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 	    key)))
 
 (defun inspire--setup-windows ()
+  "Setup window and buffer configuration for inspire-mode."
   (when inspire-pop-up-new-frame
     (unless (frame-live-p inspire-frame)
       (setq inspire-frame
@@ -330,42 +349,46 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (select-frame  inspire-frame))
 
   (unless (buffer-live-p inspire-record-buffer)
-    (setq inspire-record-buffer (get-buffer-create "*inspire-record*")))
+    (setq inspire-record-buffer (get-buffer-create "*inspire-record*"))
+    (with-current-buffer inspire-record-buffer (inspire-record-mode)))
   (if (window-live-p inspire-record-window)
       (set-window-buffer inspire-record-window inspire-record-buffer)
     (setq inspire-record-window (display-buffer inspire-record-buffer t)))
 
-  (unless (buffer-live-p inspire-buffer)
-    (setq inspire-buffer (get-buffer-create "*inspire-search*")))
+  (unless (buffer-live-p inspire-search-buffer)
+    (setq inspire-search-buffer (get-buffer-create "*inspire-search*"))
+    (with-current-buffer inspire-search-buffer (inspire-mode)))
   (if inspire-author-data
       (progn
 	(unless (buffer-live-p inspire-author-buffer)
-	  (setq inspire-author-buffer (get-buffer-create "*inspire-author*")))
+	  (setq inspire-author-buffer (get-buffer-create "*inspire-author*"))
+	  (with-current-buffer inspire-author-buffer (inspire-author-mode)))
 	(unless (window-live-p inspire-author-window)
 	  (setq inspire-author-window (get-buffer-window)))
 	(set-window-dedicated-p inspire-author-window nil)
 	(set-window-buffer inspire-author-window inspire-author-buffer)
-	(when (or (not (window-live-p inspire-window)) (eq inspire-author-window inspire-window))
-	  (setq inspire-window (split-window-vertically (round (* .5 (frame-height)))))))
+	(when (or (not (window-live-p inspire-search-window)) (eq inspire-author-window inspire-search-window))
+	  (setq inspire-search-window (split-window-vertically (round (* .5 (frame-height)))))))
     (when (window-live-p inspire-author-window)
       (quit-restore-window inspire-author-window))
-    (unless (window-live-p inspire-window)
-      (setq inspire-window (get-buffer-window))))
+    (unless (window-live-p inspire-search-window)
+      (setq inspire-search-window (get-buffer-window))))
 
-  (set-window-dedicated-p inspire-window nil)
-  (set-window-buffer inspire-window inspire-buffer)
+  (set-window-dedicated-p inspire-search-window nil)
+  (set-window-buffer inspire-search-window inspire-search-buffer)
   
-  (set-window-dedicated-p inspire-window t)
+  (set-window-dedicated-p inspire-search-window t)
   (set-window-dedicated-p inspire-record-window t)
   (when (window-live-p inspire-author-window)
     (set-window-dedicated-p inspire-author-window t))
   
-  (select-window inspire-window))
+  (select-window inspire-search-window))
 
-;; actions
+
+;; interactive functions
 
 (defun inspire-next-entry (&optional arg)
-  "Move to the next inspire entry.
+  "Move to the next literature entry.
 With ARG, move to the next nth entry."
   (interactive "p")
   (setq inspire-current-entry (+ inspire-current-entry arg))
@@ -389,7 +412,7 @@ With ARG, move to the next nth entry."
 	(inspire-show-next-page)))))
 
 (defun inspire-prev-entry (&optional arg)
-  "Move to the previous inspire entry.
+  "Move to the previous literature entry.
 With ARG, move to the previous nth entry."
   (interactive "p")
   (setq inspire-current-entry (- inspire-current-entry arg))
@@ -416,9 +439,9 @@ With ARG, move to the previous nth entry."
     (inspire-populate-record)))
 
 (defun inspire-show-next-page ()
-  (interactive)
   "Perform one more query and fill the results into buffer.
 \(according to `inspire-current-entry' and `inspire-entries-per-fetch')"
+  (interactive)
   (let* ((page   (/ (1+ inspire-current-entry) inspire-query-size))
 	 (lbound (1+ (* inspire-query-size page)))
 	 (ubound (min (* inspire-query-size (1+ page)) inspire-query-total-hits)))
@@ -433,7 +456,7 @@ With ARG, move to the previous nth entry."
 			   inspire-query-string))))
     (save-excursion
       (goto-char (point-max))
-      (inspire-fill-page (1- lbound)))))
+      (inspire--fill-page (1- lbound)))))
 
 (defun inspire-open-url (&optional field)
   "Open the corresponding inspire web page according to FIELD.
@@ -442,10 +465,10 @@ If left nil, determine FIELD depending on the current window."
   (interactive)
   (unless field
     (let ((wind (selected-window)))
-      (cond 
+      (cond
        ((eq wind inspire-author-window)
 	(setq field 'author))
-       ((eq wind inspire-window)
+       ((eq wind inspire-search-window)
 	(setq field 'record))
        ((eq wind inspire-record-window)
 	(setq field 'record)))))
@@ -456,6 +479,7 @@ If left nil, determine FIELD depending on the current window."
      (browse-url (format "https://inspirehep.net/literature/%s" (alist-get 'inspire-id (nth inspire-current-entry inspire-entry-list)))))))
 
 (defun inspire-get-bibtex ()
+  "Export bibtex for the current entry and display it in a temporary buffer."
   (interactive)
   (let ((url (alist-get 'bib-link (nth inspire-current-entry inspire-entry-list))))
     (select-window inspire-record-window)
@@ -470,27 +494,29 @@ If left nil, determine FIELD depending on the current window."
   "Quit inspire-mode and kill all related buffers."
   (interactive)
   (when (window-live-p inspire-author-window)
-    (quit-restore-window inspire-window 'kill)
+    (quit-restore-window inspire-search-window 'kill)
     (quit-restore-window inspire-author-window 'kill)
     (setq inspire-author-window nil))
   (when (window-live-p inspire-record-window)
     (quit-restore-window inspire-record-window 'kill)
     (setq inspire-record-window nil))
-  (kill-buffer inspire-buffer)
+  (kill-buffer inspire-search-buffer)
   (when inspire-record-buffer (kill-buffer inspire-record-buffer))
   (when inspire-author-buffer (kill-buffer inspire-author-buffer))
   (setq inspire-record-buffer nil
 	inspire-author-buffer nil
-	inspire-window nil
+	inspire-search-window nil
 	inspire-frame nil)
   (setq inspire-author-data nil
 	inspire-entry-list nil
+	inspire-current-entry 0
 	inspire-history-index 0
 	inspire-query-history nil
 	inspire-query-string nil
 	inspire-query-total-hits nil))
 
 (defun inspire-previous-search ()
+  "Show the previous search results in history."
   (interactive)
   (if (>= (1+ inspire-history-index) (safe-length inspire-query-history) )
       (message "Beginning of search history.")
@@ -504,6 +530,7 @@ If left nil, determine FIELD depending on the current window."
     (inspire-populate-record)))
 
 (defun inspire-next-search ()
+  "Show the next search results in history."
   (interactive)
   (if (= 0 inspire-history-index)
       (message "End of search history.")
@@ -539,9 +566,12 @@ Which result to load is specified by INDEX."
 ;; formatting pages
 
 (defun inspire--insert-with-face (str face &rest properties)
+  "Wrapper function for inserting STR with FACE.
+Additional PROPERTIES can also be specified."
   (insert (apply 'propertize `(,str font-lock-face ,face ,@properties))))
 
 (defun inspire--insert-url (str url)
+  "Wrapper function for inserting a web link with name STR and address URL."
   (insert-button str
 		 'action (lambda (x) (browse-url (button-get x 'url)))
 		 'face 'inspire-link-face
@@ -551,33 +581,39 @@ Which result to load is specified by INDEX."
 		 'url url))
 
 (defun inspire-populate-record ()
+  "Clear and refill the inspire record buffer with relevant data."
   (with-current-buffer inspire-record-buffer
-    (inspire-record-mode)
-    (let ((buffer-read-only nil))
-      (erase-buffer)
-      (inspire-fill-record (nth inspire-current-entry inspire-entry-list)))))
+    (let ((entry (nth inspire-current-entry inspire-entry-list)))
+      (setq header-line-format (format " literature/%s" (alist-get 'inspire-id entry)))
+      (let ((buffer-read-only nil))
+	(erase-buffer)
+	(inspire--fill-record entry))
+      (goto-char (point-min)))))
   
 (defun inspire-populate-page ()
-  (with-current-buffer inspire-buffer
-    (inspire-mode)
+  "Clear and refill the inspire search buffer with entries."
+  (with-current-buffer inspire-search-buffer
     (let ((buffer-read-only nil))
       (erase-buffer)
-      (inspire-fill-page)
-      (goto-char (point-min))
+      (inspire--fill-page)
       (move-overlay inspire-highlight-overlay
-		    (point) (progn (beginning-of-line 5) (point)))
-      (goto-char (point-min)))))
-
+		    (point) (progn (beginning-of-line 5) (point))))
+    (goto-char (point-min))
+    (setq inspire-current-entry 0)))
 
 (defun inspire-populate-author-data ()
+  "Clear and refill the inspire author buffer with relevant data."
   (with-current-buffer inspire-author-buffer
-    (inspire-author-mode)
+    (setq header-line-format (format " author/%s" (alist-get 'control-number inspire-author-data)))
     (let ((buffer-read-only nil))
       (erase-buffer)
-      (inspire-fill-author-data))
+      (inspire--fill-author-data))
     (goto-char (point-min))))
 
-(defun inspire-fill-page (&optional start-entry)
+(defun inspire--fill-page (&optional start-entry)
+  "Format and insert the search results according to `inspire-entry-list'.
+Default to start inserting from entry index 0.
+With non-nil START-ENTRY, start from there instead."
   (seq-do-indexed
    (lambda (entry index)
      (unless (and start-entry (< index start-entry))
@@ -592,13 +628,13 @@ Which result to load is specified by INDEX."
        (inspire--insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) inspire-date-face)))
    inspire-entry-list))
 
-(defun inspire-fill-record (entry)
-  ;; headerline
-  (setq header-line-format (format " literature/%s" (alist-get 'inspire-id entry)))
-
+(defun inspire--fill-record (entry)
+  "Format and insert the record data.
+ENTRY is an alist containing all the relevant data for the record."
+  
   ;; title and authors
   (inspire--insert-with-face (format "\n%s\n" (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.3))
-  (inspire--insert-with-face "\n" inspire-title-face)  
+  (inspire--insert-with-face "\n" inspire-title-face)
   (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
       (inspire--insert-with-face
        (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
@@ -618,10 +654,10 @@ Which result to load is specified by INDEX."
   (when-let (conferences (alist-get 'conferences entry))
     (inspire--insert-with-face (format "Contribution to: %s\n" (mapconcat 'identity conferences ", ")) inspire-subfield-face))
   (when-let (eprint (alist-get 'eprint entry))
-    (inspire--insert-with-face "e-print: " inspire-subfield-face)    
+    (inspire--insert-with-face "e-print: " inspire-subfield-face)
     (inspire--insert-url (alist-get 'value eprint) (format "https://arxiv.org/abs/%s" (alist-get 'value eprint)))
     (inspire--insert-with-face (format " [%s]\n" (map-nested-elt eprint '(categories 0))) inspire-arxiv-category-face))
-  (when-let (dois (alist-get 'dois entry))    
+  (when-let (dois (alist-get 'dois entry))
     (inspire--insert-with-face "DOI: " inspire-subfield-face)
     (seq-doseq (doi dois)
       (inspire--insert-url doi (format "https://doi.org/%s" doi))
@@ -654,10 +690,9 @@ Which result to load is specified by INDEX."
 		 'help-echo "citation search"
 		 'url (format "refersto:recid:%s" (alist-get 'inspire-id entry))))
 
-(defun inspire-fill-author-data ()
-  ;; headerline
-  (setq header-line-format (format " author/%s" (alist-get 'control-number inspire-author-data)))
-  
+(defun inspire--fill-author-data ()
+  "Format and insert the author data according to `inspire-author-data'."
+    
   ;; name and current positions
   (inspire--insert-with-face (format "\n%s" (alist-get 'name inspire-author-data)) '(:inherit inspire-author-heading-face :height 1.2))
   (when-let ((alt-name (alist-get 'native-names inspire-author-data)))
@@ -704,8 +739,9 @@ Which result to load is specified by INDEX."
 ;; parsing query results
 
 (defun inspire-parse-literature (url)
-  "Call inspire hep to search for literatures. 
-Parse the returned results into a list."
+  "Call inspirehep API at URL to search for literature.
+Parse the returned results into a list of alists
+containing literature information."
   (with-current-buffer (url-retrieve-synchronously url)
     (set-buffer-multibyte t)
     (goto-char (point-min))
@@ -714,7 +750,7 @@ Parse the returned results into a list."
     (let* ((root (alist-get 'hits (json-parse-buffer :object-type 'alist)))
 	   (total (alist-get 'total root))
 	   (hits (alist-get 'hits root))
-	   (alist-entry) (alist-formed '()))    
+	   (alist-entry) (alist-formed '()))
       (seq-doseq (entry hits)
 	(let ((metadata (alist-get 'metadata entry))
 	      (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
@@ -776,6 +812,9 @@ Parse the returned results into a list."
       (reverse alist-formed))))
 
 (defun inspire-parse-author (url)
+  "Call inspirehep API at URL for a list of matching authors.
+Parse the returned results into a list of alists containing
+ author information."
   "Call inspire hep to search for authors list.
 Parse the returned results into a list."
   (with-current-buffer (url-retrieve-synchronously url)
@@ -812,7 +851,7 @@ Parse the returned results into a list."
 		      (let* ((rank    (alist-get 'rank pos))
 			     (inst    (alist-get 'institution pos))
 			     (start   (or (alist-get 'start_date pos)))
-			     (end     (or (alist-get 'end_date pos) ""))			   
+			     (end     (or (alist-get 'end_date pos) ""))
 			     (current (alist-get 'current pos))
 			     (hidden  (alist-get 'hidden pos)))
 			(unless (eq hidden t)
@@ -844,6 +883,9 @@ Parse the returned results into a list."
       (reverse alist-formed))))
 
 (defun inspire--reorder-name (full-name)
+  "Helper function for translating the author names.
+Recast string FULL-NAME from \"last_name, first_name\"
+to \"first_name last_name\"."
   (if (string-match "^\\(.+\\), \\(.+\\)$" full-name)
       (concat (match-string 2 full-name) " " (match-string 1 full-name))
     full-name))
