@@ -11,19 +11,22 @@ inspire.el provides two main entry functions for searching on [[https://inspireh
 The [[https://help.inspirehep.net/knowledge-base/inspire-paper-search/][SPIRES syntax]] is available for ~inspire-literature-search~ function.
 inspire.el will then pop-up a list of records where one can browse and examine detailed information for each record.
 
+
 In the record list, use ~n~ and ~p~ to navigate the list.
-Use ~u~ to open the web page associated to the item.
-Use ~b~ to export the bibtex entry to a temporary buffer.
-Click on the references and citations button to lookup for papers referencing or citing the item.
-Use ~[~ and ~]~ to navigate through the search history.
-Finally, press ~q~ to exit the record list.
+
+Other useful commands and their default bindings:
++ ~u (inspire-open-url)~ : open the web page associated to the item
++ ~d (inspire-download-pdf)~: download pdf from a selection source
++ ~b (inspire-get-bibtex)~: export the bibtex entry to a temporary buffer
++ ~r (inspire-reference-search)~ and ~c (inspire-citation-search)~: look up references and citations for the current record
+ You can also click on references and citations button to initiate the same searches.
++ ~[ (inspire-previous-search)~ and ~] (inspire-next-searchh)~: navigate through the search history
++ ~q (inspire-exit)~: exit the record list
 
 * Customization
 TBD
 
 * TODO list
-+ download PDF function
-+ keymap for cross reference searching
 + insert bib info to database
 + cross searching record authors
 + show experiment info in author page

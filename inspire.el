@@ -72,6 +72,15 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
   :group 'inspire-preferences
   :type 'integer)
 
+(defcustom inspire-default-download-folder "~/Downloads/"
+  "Default download folder to save PDF file."
+  :group 'inspire-preferences
+  :type 'string)
+
+(defcustom inspire-pdf-open-function 'find-file-other-window
+  "Default function to open PDF file downloaded."
+  :group 'inspire-preferences
+  :type 'function)
 
 ;; faces
 
@@ -204,7 +213,10 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (define-key map (kbd "u") 'inspire-open-url)
     (define-key map (kbd "SPC") 'inspire-select-entry)
     (define-key map (kbd "q") 'inspire-exit)
+    (define-key map (kbd "d") 'inspire-download-pdf)
     (define-key map (kbd "b") 'inspire-get-bibtex)
+    (define-key map (kbd "r") 'inspire-reference-search)
+    (define-key map (kbd "c") 'inspire-citation-search)
     (define-key map (kbd "\[") 'inspire-previous-search)
     (define-key map (kbd "\]") 'inspire-next-search)
     map))
@@ -214,7 +226,10 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (define-key map (kbd "RET") 'inspire-open-url)
     (define-key map (kbd "u") 'inspire-open-url)
     (define-key map (kbd "q") 'inspire-exit)
+    (define-key map (kbd "d") 'inspire-download-pdf)
     (define-key map (kbd "b") 'inspire-get-bibtex)
+    (define-key map (kbd "r") 'inspire-reference-search)
+    (define-key map (kbd "c") 'inspire-citation-search)
     (define-key map (kbd "\[") 'inspire-previous-search)
     (define-key map (kbd "\]") 'inspire-next-search)
     map))
@@ -483,6 +498,24 @@ If left nil, determine FIELD depending on the current window."
     ('record
      (browse-url (format "https://inspirehep.net/literature/%s" (alist-get 'inspire-id (nth inspire-current-entry inspire-entry-list)))))))
 
+(defun inspire-reference-search (&optional confirm)
+  "Look up all articles that the current record references.
+If CONFIRM is nil, ask user for confirmation."
+  (interactive)
+  (let* ((entry (nth inspire-current-entry inspire-entry-list))
+	 (id (alist-get 'inspire-id entry)))
+    (when (or confirm (y-or-n-p "Look up articles this item refers to? "))
+      (inspire-literature-search (format "citedby:recid:%s" id)))))
+
+(defun inspire-citation-search (&optional confirm)
+  "Look up all articles that cited the current record.
+If CONFIRM is nil, ask user for confirmation."
+  (interactive)
+    (let* ((entry (nth inspire-current-entry inspire-entry-list))
+	   (id (alist-get 'inspire-id entry)))
+      (when (or confirm (y-or-n-p "Look up articles citing this item? "))
+	(inspire-literature-search (format "refersto:recid:%s" id)))))
+
 (defun inspire-get-bibtex ()
   "Export bibtex for the current entry and display it in a temporary buffer."
   (interactive)
@@ -494,6 +527,33 @@ If left nil, determine FIELD depending on the current window."
     (setq buffer-read-only nil)
     (bibtex-mode)
     (bibtex-set-dialect 'BibTeX t)))
+
+(defun inspire-download-pdf (&optional pdf-path ask-if-open)
+  "Download and save the PDF of the selected record to PDF-PATH.
+If ASK-IF-OPEN is non-nil, ask the user whether to open the file in addition.
+Return the path of downloaded PDF."
+  (interactive)
+  (if-let ((docs (alist-get 'files (nth inspire-current-entry inspire-entry-list)))
+	   (key (or (alist-get 'bib-key (nth inspire-current-entry inspire-entry-list) "document"))))
+      (progn
+	(let* ((selected) (url) (newfile))
+	  (print docs)
+	  (setq selected (completing-read "Download from source: "
+					  (seq-map (lambda (x) (alist-get 'description x)) docs)
+					  nil t))
+	  (setq selected (seq-find (lambda (x) (equal (alist-get 'description x) selected)) docs))
+	  (setq url (alist-get 'url selected))
+	  (setq key (replace-regexp-in-string ":" "-" key)) ; file system does not support ":" as valid file name
+	  (unless pdf-path
+	    (setq pdf-path (read-file-name "Save pdf as: "
+					   inspire-default-download-folder
+					   nil nil (concat key ".pdf"))))
+	  (setq newfile (url-copy-file url pdf-path 1))
+	  (if ask-if-open
+	      (when (yes-or-no-p (format "%s saved. Open file? " pdf-path))
+		(funcall inspire-pdf-open-function newfile))
+	    (message (format "%s saved." pdf-path)))))
+    (message "No available files for download.")))
 
 (defun inspire-exit ()
   "Quit inspire-mode and kill all related buffers."
@@ -680,20 +740,18 @@ ENTRY is an alist containing all the relevant data for the record."
   
   ;; citations & references
   (insert-button (format "%s References"  (alist-get 'reference-count entry))
-		 'action (lambda (x) (inspire-literature-search (button-get x 'url)))
+		 'action (lambda (_) (inspire-reference-search t))
 		 'face 'inspire-link-face
 		 'mouse-face 'highlight
 		 'follow-link t
-		 'help-echo "reference search"
-		 'url (format "citedby:recid:%s" (alist-get 'inspire-id entry)))
+		 'help-echo "reference search")
   (insert ",  ")
   (insert-button (format "%s Citations"  (alist-get 'citation-count entry))
-		 'action (lambda (x) (inspire-literature-search (button-get x 'url)))
+		 'action (lambda (_) (inspire-citation-search t))
 		 'face 'inspire-link-face
 		 'mouse-face 'highlight
 		 'follow-link t
-		 'help-echo "citation search"
-		 'url (format "refersto:recid:%s" (alist-get 'inspire-id entry))))
+		 'help-echo "citation search"))
 
 (defun inspire--fill-author-data ()
   "Format and insert the author data according to `inspire-author-data'."
@@ -708,8 +766,10 @@ ENTRY is an alist containing all the relevant data for the record."
   (insert "\n")
 
   ;; arxiv categories, author id and advisor
-  (inspire--insert-with-face (alist-get 'arxiv-categories inspire-author-data) inspire-arxiv-category-face)
-  (inspire--insert-with-face "\n\nAuthor id: " inspire-subfield-face)
+  (when-let ((arxiv-cat (alist-get 'arxiv-categories inspire-author-data)))
+    (inspire--insert-with-face arxiv-cat inspire-arxiv-category-face)
+    (insert "\n"))
+  (inspire--insert-with-face "\nAuthor id: " inspire-subfield-face)
   (inspire--insert-url (alist-get 'inspire-bai inspire-author-data)
 		      (format "https://inspirehep.net/authors/%s" (alist-get 'control-number inspire-author-data)))
   (when-let ((orcid (alist-get 'orcid inspire-author-data)))
@@ -758,7 +818,7 @@ containing literature information."
 	   (alist-entry) (alist-formed '()))
       (seq-doseq (entry hits)
 	(let ((metadata (alist-get 'metadata entry))
-	      (title) (authors) (collaborations) (date) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
+	      (title) (authors) (collaborations) (date) (files) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
 	  (setq inspire-query-total-hits total)
 	  (setq bib-link (map-nested-elt entry '(links bibtex)))
 	  (setq bib-key (map-nested-elt metadata '(texkeys 0)))
@@ -796,6 +856,16 @@ containing literature information."
 		       (replace-regexp-in-string "\n" "" raw))) ; strip off extra EOLs
 	  (setq type (map-nested-elt metadata '(document_type 0)))
 	  
+	  (when eprint
+	    (push `((url . ,(format "https://arxiv.org/pdf/%s.pdf" (alist-get 'value eprint)))
+		    (description . "arXiv"))
+		  files))
+	  (when-let ((docs (alist-get 'documents metadata)))
+	    (seq-doseq (doc docs)
+	      (push `((url . ,(alist-get 'url doc))
+		      (description . ,(or (alist-get 'description doc) "inspirehep")))
+		    files)))
+	  
 	  (setq alist-entry `((title . ,title)
 			      (authors . ,authors)
 			      (collaborations . ,collaborations)
@@ -812,7 +882,8 @@ containing literature information."
 			      (reference-count . ,reference-count)
 			      (number-of-pages . ,number-of-pages)
 			      (type . ,type)
-			      (inspire-id . ,inspire-id)))
+			      (inspire-id . ,inspire-id)
+			      (files . ,files)))
 	  (setq alist-formed (cons alist-entry alist-formed))))
       (reverse alist-formed))))
 
