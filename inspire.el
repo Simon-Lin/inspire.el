@@ -77,6 +77,12 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
   :group 'inspire-preferences
   :type 'string)
 
+(defcustom inspire-master-bibliography-file "~/master.bib"
+  "Default bibliography file `inspire-export-bibtex' exports to."
+  :group 'inspire-preferences
+  :type 'string
+  )
+
 (defcustom inspire-pdf-open-function 'find-file-other-window
   "Default function to open PDF file downloaded."
   :group 'inspire-preferences
@@ -214,7 +220,9 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (define-key map (kbd "SPC") 'inspire-select-entry)
     (define-key map (kbd "q") 'inspire-exit)
     (define-key map (kbd "d") 'inspire-download-pdf)
-    (define-key map (kbd "b") 'inspire-get-bibtex)
+    (define-key map (kbd "B") 'inspire-export-bibtex-to-file)
+    (define-key map (kbd "e") 'inspire-download-pdf-export-bibtex)
+    (define-key map (kbd "b") 'inspire-export-bibtex-new-buffer)
     (define-key map (kbd "r") 'inspire-reference-search)
     (define-key map (kbd "c") 'inspire-citation-search)
     (define-key map (kbd "\[") 'inspire-previous-search)
@@ -227,7 +235,9 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (define-key map (kbd "u") 'inspire-open-url)
     (define-key map (kbd "q") 'inspire-exit)
     (define-key map (kbd "d") 'inspire-download-pdf)
-    (define-key map (kbd "b") 'inspire-get-bibtex)
+    (define-key map (kbd "B") 'inspire-export-bibtex-to-file)
+    (define-key map (kbd "e") 'inspire-download-pdf-export-bibtex)
+    (define-key map (kbd "b") 'inspire-export-bibtex-new-buffer)
     (define-key map (kbd "r") 'inspire-reference-search)
     (define-key map (kbd "c") 'inspire-citation-search)
     (define-key map (kbd "\[") 'inspire-previous-search)
@@ -517,16 +527,37 @@ If CONFIRM is nil, ask user for confirmation."
 	(inspire-literature-search (format "refersto:recid:%s" id)))))
 
 (defun inspire-get-bibtex ()
-  "Export bibtex for the current entry and display it in a temporary buffer."
+  "Return bibtex information for the current entry."
   (interactive)
-  (let ((url (alist-get 'bib-link (nth inspire-current-entry inspire-entry-list))))
-    (select-window inspire-record-window)
-    (pop-to-buffer "*inspire-bibTeX*" '(display-buffer-below-selected))
-    (erase-buffer)
-    (url-insert (url-retrieve-synchronously url))
-    (setq buffer-read-only nil)
-    (bibtex-mode)
-    (bibtex-set-dialect 'BibTeX t)))
+  (if-let ((url (alist-get 'bib-link (nth inspire-current-entry inspire-entry-list))))
+      (with-temp-buffer
+	(url-insert (url-retrieve-synchronously url))
+	(buffer-string))
+    (message "No bibTeX information for this item.")
+    nil))
+
+(defun inspire-export-bibtex-to-file (bib-file)
+  "Export bibtex information for current entry and append to a file.
+The location of the file is specified by BIB-FILE.
+The default location is set by `inspire-master-bibtex-file'."
+  (interactive (list (read-file-name "export to bibliography file: "
+				     (expand-file-name inspire-master-bibliography-file) nil 'confirm)))
+  (with-temp-buffer
+    (find-file bib-file)
+    (when (not (looking-at "^")) (insert "\n"))
+    (insert (inspire-get-bibtex))
+    (goto-char (point-max))
+    (when (not (looking-at "^")) (insert "\n"))
+    (save-buffer)))
+
+(defun inspire-export-bibtex-new-buffer ()
+  "Get bibtex information for current entry and display it in a temporary buffer."
+  (interactive)
+  (select-window inspire-record-window)
+  (pop-to-buffer "*inspire-bibTeX*" '(display-buffer-below-selected))
+  (insert (inspire-get-bibtex))
+  (bibtex-mode)
+  (bibtex-set-dialect 'BibTeX t))
 
 (defun inspire-download-pdf (&optional pdf-path ask-if-open)
   "Download and save the PDF of the selected record to PDF-PATH.
@@ -554,6 +585,12 @@ Return the path of downloaded PDF."
 		(funcall inspire-pdf-open-function newfile))
 	    (message (format "%s saved." pdf-path)))))
     (message "No available files for download.")))
+
+(defun inspire-download-pdf-export-bibtex ()
+  "Download the PDF and export the bibTeX for the current record."
+  (interactive)
+  (inspire-download-pdf)
+  (funcall-interactively 'inspire-export-bibtex))
 
 (defun inspire-exit ()
   "Quit inspire-mode and kill all related buffers."
