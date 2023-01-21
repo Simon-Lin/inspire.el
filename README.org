@@ -6,8 +6,7 @@ inspire.el is an Emacs interface for literature and references searching on the 
 
 * Common usage
 inspire.el provides two main entry functions for searching on [[https://inspirehep.net][inspirehep]]: \\
-~inspire-literature-search~ for literature lookup, and \\
-~inspire-author-search~ for author lookup.\\
+~inspire-literature-search~ for literature lookup, and ~inspire-author-search~ for author lookup.\\
 The [[https://help.inspirehep.net/knowledge-base/inspire-paper-search/][SPIRES syntax]] is available for ~inspire-literature-search~ function.
 inspire.el will then pop-up a list of records where one can browse and examine detailed information for each record.
 
@@ -16,7 +15,7 @@ In the record list, use ~n~ and ~p~ to navigate the list. \\
 Other useful commands and their default bindings:
 + ~u (inspire-open-url)~ : open the web page associated to the item
 + ~d (inspire-download-pdf)~: download PDF from a selected source
-+ ~b (inspire--export-bibtex-new-buffer)~: export the bibTeX entry to a temporary buffer
++ ~b (inspire-export-bibtex-new-buffer)~: export the bibTeX entry to a temporary buffer
 + ~B (inspire-export-bibtex-to-file)~: export the bibtex entry to a .bib file
 + ~e (inspire-download-pdf-export-bibtex)~: download PDF and export bibTeX info to a file
 + ~r (inspire-reference-search)~ look up for references of the current record 
@@ -27,8 +26,37 @@ Other useful commands and their default bindings:
 Some texts in the record or author information buffer are clickable and will preform corresponding action when clicked upon.
 
 * Customization
-TBD
+Various options of inspire.el are located in the customize group named ~inspire~. You can also set the variables directly:
+** faces
+To make the display faces using monospace fonts:
+#+begin_src elisp
+  (setq inspire-use-variable-pitch nil)
+#+end_src
+You can also set the relevant faces (faces start with ~inspire-~) directly.
+** using new frames
+To not pop up a new frame when initiating a new inspire query:
+#+begin_src elisp
+  (setq inspire-pop-up-new-frame nil)
+#+end_src
+The width and height of the new frame is set by variables ~inspire-new-frame-width~ and ~inspire-new-frame-height~.
+** download folder
+To change the default download folder for papers:
+#+begin_src elisp
+  (setq inspire-default-download-folder "/some/other/directory/")
+#+end_src
+** master bibfile
+To change the default bibTeX file that functions ~inspire-export-bibtex-to-file~ and ~inspire-download-pdf-export-bibtex~ point to:
+#+begin_src elisp
+  (setq inspire-master-bibliography-file "/your/preferred_file.bib")
+#+end_src
+** pdf view function
+Set the variable ~inspire-pdf-open-function~ to change the default pdf viewing function.
+For example, to open in Preview.app in macOS:
+#+begin_src elisp
+  (setq arxiv-pdf-open-function (lambda (fpath) (call-process "open" nil 0 nil "-a" "/Applications/Preview.app" fpath)))
+#+end_src
 
 * TO DO list
-+ cross searching record authors
++ check the existence of bib record in bib file and ask if wish to replace
 + show experiment info in author page
++ reference list in record page

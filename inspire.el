@@ -349,7 +349,27 @@ List the author details and their publication in a new buffer."
       (inspire--push-to-history)
       (inspire-populate-page)
       (inspire-populate-record))))
- 
+
+;;;###autoload
+(defun inspire-author-record (author-id)
+  "Show the record of a particular author on inspirehep.
+AUTHOR-ID has to be a 6 or 7-digit number which is the control number
+ associated to the author. This function does not work with other
+ ids, such as inspire BAI or ORCID."
+  (interactive "sLook up author record on inspirehep (7-digit control number): ")
+  (setq inspire-author-data (inspire-parse-author (format "%sauthors/%s" inspire-api-url author-id)))
+  (inspire--setup-windows)
+  (inspire-populate-author-data)
+  
+  ;; search and display authored literature
+  (setq inspire-query-string (format "a= %s" (alist-get 'inspire-bai inspire-author-data)))
+  (setq inspire-entry-list
+	(inspire-parse-literature
+	 (format "%sliterature?sort=mostrecent&size=%s&q=%s" inspire-api-url inspire-query-size inspire-query-string)))
+  (inspire--push-to-history)
+  (inspire-populate-page)
+  (inspire-populate-record))
+
 (defun inspire--author-format-completion-string (author-alist)
   "Format the entry for `completing-read' from AUTHOR-ALIST."
   (let ((name (alist-get 'name author-alist))
@@ -388,6 +408,8 @@ List the author details and their publication in a new buffer."
   (unless (buffer-live-p inspire-search-buffer)
     (setq inspire-search-buffer (get-buffer-create "*inspire-search*"))
     (with-current-buffer inspire-search-buffer (inspire-mode)))
+  (when (window-live-p inspire-search-window) (select-window inspire-search-window))
+  
   (if inspire-author-data
       (progn
 	(unless (buffer-live-p inspire-author-buffer)
@@ -622,6 +644,7 @@ Return the path of downloaded PDF."
   (interactive)
   (if (>= (1+ inspire-history-index) (safe-length inspire-query-history) )
       (message "Beginning of search history.")
+    (message "Previous search result")
     (setq inspire-history-index (1+ inspire-history-index))
     (inspire--load-from-history inspire-history-index)
     (inspire--setup-windows)
@@ -636,6 +659,7 @@ Return the path of downloaded PDF."
   (interactive)
   (if (= 0 inspire-history-index)
       (message "End of search history.")
+    (message "Next search result")
     (setq inspire-history-index (1- inspire-history-index))
     (inspire--load-from-history inspire-history-index)
     (inspire--setup-windows)
@@ -740,11 +764,21 @@ ENTRY is an alist containing all the relevant data for the record."
   (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
       (inspire--insert-with-face
        (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
-    (inspire--insert-with-face (mapconcat (lambda (author) ; author list
-					   (concat (format "%s" (alist-get 'name author))
-						   (when (alist-get 'affiliation author)
-						     (format " (%s)" (mapconcat 'identity (alist-get 'affiliation author) ", ")))))
-					 (alist-get 'authors entry) ", ") inspire-author-face))
+    (seq-doseq (author (alist-get 'authors entry)) ; author list
+      (if (alist-get 'recid author)
+	  (insert-button (alist-get 'name author)
+			 'action (lambda (_) (inspire-author-record (alist-get 'recid author)))
+			 'face '(:inherit inspire-author-face :underline t)
+			 'mouse-face 'highlight
+			 'follow-link t
+			 'help-echo (format "Look up profile: author/%s" (alist-get 'recid author)))
+	(inspire--insert-with-face (alist-get 'name author)))
+      (when (alist-get 'affiliation author)
+	(inspire--insert-with-face
+	 (format " (%s)" (mapconcat 'identity (alist-get 'affiliation author) ", "))
+	 inspire-author-face))
+      (inspire--insert-with-face ", " inspire-author-face)))
+  (delete-char -2)
   (inspire--insert-with-face (format "\n%s\n\n" (alist-get 'date entry)) inspire-date-face)
   
   ;; pages and publication info
@@ -853,6 +887,11 @@ containing literature information."
 	   (total (alist-get 'total root))
 	   (hits (alist-get 'hits root))
 	   (alist-entry) (alist-formed '()))
+      
+      (when-let ((code (alist-get 'status root))
+		 (mess (alist-get 'message root)))
+	(error (format "Error %s: %s." code mess)))
+      
       (seq-doseq (entry hits)
 	(let ((metadata (alist-get 'metadata entry))
 	      (title) (authors) (collaborations) (date) (files) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
@@ -871,7 +910,8 @@ containing literature information."
 	  (setq number-of-pages (alist-get 'number_of_pages metadata))
 	  (setq inspire-id (alist-get 'id entry))
 	  (setq authors (seq-map (lambda (elem) `((name . ,(inspire--reorder-name (alist-get 'full_name elem)))
-					     (affiliation . ,(mapcar (lambda (aff) (alist-get 'value aff)) (alist-get 'affiliations elem)))))
+					     (affiliation . ,(mapcar (lambda (aff) (alist-get 'value aff)) (alist-get 'affiliations elem)))
+					     (recid . ,(alist-get 'recid elem))))
 				 (alist-get 'authors metadata)))
 	  (setq collaborations (and (alist-get 'collaborations metadata)
 				    (seq-map (lambda (elem) (alist-get 'value elem)) (alist-get 'collaborations metadata))))
@@ -925,75 +965,81 @@ containing literature information."
       (reverse alist-formed))))
 
 (defun inspire-parse-author (url)
-  "Call inspirehep API at URL for a list of matching authors.
-Parse the returned results into a list of alists containing
- author information."
-  "Call inspire hep to search for authors list.
-Parse the returned results into a list."
+  "Call inspirehep API at URL for an author query and parse the result.
+If the url query is a single author record,
+return an alist containing author info.
+If the url query is a search for matched names,
+return a list of alists with each entry formatted as above."
   (with-current-buffer (url-retrieve-synchronously url)
     (set-buffer-multibyte t)
     (goto-char (point-min))
     (search-forward "\{")
     (backward-char)
-    (let* ((root (alist-get 'hits (json-parse-buffer :object-type 'alist)))
-	   (hits (alist-get 'hits root))
-	   (alist-entry) (alist-formed))
-      (seq-doseq (entry hits)
-	(let ((metadata (alist-get 'metadata entry))
-	      (ids) (inspire-bai) (orcid) (control-number) (name) (native-names) (advisors) (positions) (current-position) (arxiv-categories) (email) (timestamp))
-	  (setq ids (alist-get 'ids metadata))
-	  (setq inspire-bai (alist-get 'value (seq-find (lambda (x) (equal (alist-get 'schema x) "INSPIRE BAI")) ids)))
-	  (setq orcid (alist-get 'value (seq-find (lambda (x) (equal (alist-get 'schema x) "ORCID")) ids)))
-	  (setq control-number (alist-get 'control_number metadata))
-	  (setq name (or (map-nested-elt metadata '(name preferred_name))
-			 (inspire--reorder-name (map-nested-elt metadata '(name value)))))
-	  (when-let ((nat (map-nested-elt metadata '(name native_names))))
-	    (setq native-names (mapconcat 'identity nat ", ")))
-	  (when-let ((adv (seq-filter (lambda (x) (not (eq (alist-get 'hidden x) t))) (alist-get 'advisors metadata))))
-	    (setq advisors
-		  (seq-map (lambda (x)
-			     `((type . ,(alist-get 'degree_type x)) (name . ,(inspire--reorder-name (alist-get 'name x)))))
-			   adv)))
-	  (when-let ((cat (alist-get 'arxiv_categories metadata)))
-	    (setq arxiv-categories (mapconcat (lambda (cat) (format "[%s]" cat)) cat " ")))
-	  (setq email (map-nested-elt metadata '(email_addresses 0 value)))
-	  (string-match "^\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (alist-get 'updated entry))
-	  (setq timestamp (match-string 1 (alist-get 'updated entry)))
-	  (when-let ((pos-list (alist-get 'positions metadata)))
-	    (seq-do (lambda (pos)
-		      (let* ((rank    (alist-get 'rank pos))
-			     (inst    (alist-get 'institution pos))
-			     (start   (or (alist-get 'start_date pos)))
-			     (end     (or (alist-get 'end_date pos) ""))
-			     (current (alist-get 'current pos))
-			     (hidden  (alist-get 'hidden pos)))
-			(unless (eq hidden t)
-			  (if (eq current t)
-			      (progn
-				(push inst current-position)
-				(if start
-				    (push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s - present" start))) positions)
-				  (push `((rank . ,rank) (institution . ,inst) (date . "present")) positions)))
-			    (if start
-				(push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s - %s" start end))) positions)
-			      (push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s" end))) positions))))))
-		    pos-list)
-	    (setq positions (nreverse positions))
-	    (setq current-position (and current-position (mapconcat 'identity (nreverse current-position) " and "))))
-	  
-	  (setq alist-entry `((inspire-bai . ,inspire-bai)
-			      (orcid . ,orcid)
-			      (control-number . ,control-number)
-			      (name . ,name)
-			      (native-names . ,native-names)
-			      (advisors . ,advisors)
-			      (arxiv-categories . ,arxiv-categories)
-			      (email . ,email)
-			      (positions . ,positions)
-			      (current-position . ,current-position)
-			      (timestamp . ,timestamp)))
-	  (setq alist-formed (cons alist-entry alist-formed))))
-      (reverse alist-formed))))
+    (let ((root (json-parse-buffer :object-type'alist)))
+      (when-let ((code (alist-get 'status root))
+		 (mess (alist-get 'message root)))
+	(error (format "Error %s: %s." code mess)))
+      (if (assoc 'metadata root)
+	  (inspire--parse-author-entry root) ; single author record
+	(seq-map
+	 (lambda (entry) (inspire--parse-author-entry entry)) ; multi-author query
+	 (map-nested-elt root '(hits hits)))))))
+
+(defun inspire--parse-author-entry (entry)
+  "Parse ENTRY and return an alist containing author information."
+  (let ((metadata (alist-get 'metadata entry))
+	(ids) (inspire-bai) (orcid) (control-number) (name) (native-names) (advisors) (positions) (current-position) (arxiv-categories) (email) (timestamp))
+    (setq ids (alist-get 'ids metadata))
+    (setq inspire-bai (alist-get 'value (seq-find (lambda (x) (equal (alist-get 'schema x) "INSPIRE BAI")) ids)))
+    (setq orcid (alist-get 'value (seq-find (lambda (x) (equal (alist-get 'schema x) "ORCID")) ids)))
+    (setq control-number (alist-get 'control_number metadata))
+    (setq name (or (map-nested-elt metadata '(name preferred_name))
+		   (inspire--reorder-name (map-nested-elt metadata '(name value)))))
+    (when-let ((nat (map-nested-elt metadata '(name native_names))))
+      (setq native-names (mapconcat 'identity nat ", ")))
+    (when-let ((adv (seq-filter (lambda (x) (not (eq (alist-get 'hidden x) t))) (alist-get 'advisors metadata))))
+      (setq advisors
+	    (seq-map (lambda (x)
+		       `((type . ,(alist-get 'degree_type x)) (name . ,(inspire--reorder-name (alist-get 'name x)))))
+		     adv)))
+    (when-let ((cat (alist-get 'arxiv_categories metadata)))
+      (setq arxiv-categories (mapconcat (lambda (cat) (format "[%s]" cat)) cat " ")))
+    (setq email (map-nested-elt metadata '(email_addresses 0 value)))
+    (string-match "^\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (alist-get 'updated entry))
+    (setq timestamp (match-string 1 (alist-get 'updated entry)))
+    (when-let ((pos-list (alist-get 'positions metadata)))
+      (seq-do (lambda (pos)
+		(let* ((rank    (alist-get 'rank pos))
+		       (inst    (alist-get 'institution pos))
+		       (start   (or (alist-get 'start_date pos)))
+		       (end     (or (alist-get 'end_date pos) ""))
+		       (current (alist-get 'current pos))
+		       (hidden  (alist-get 'hidden pos)))
+		  (unless (eq hidden t)
+		    (if (eq current t)
+			(progn
+			  (push inst current-position)
+			  (if start
+			      (push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s - present" start))) positions)
+			    (push `((rank . ,rank) (institution . ,inst) (date . "present")) positions)))
+		      (if start
+			  (push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s - %s" start end))) positions)
+			(push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s" end))) positions))))))
+	      pos-list)
+      (setq positions (nreverse positions))
+      (setq current-position (and current-position (mapconcat 'identity (nreverse current-position) " and "))))
+    
+    `((inspire-bai . ,inspire-bai)
+      (orcid . ,orcid)
+      (control-number . ,control-number)
+      (name . ,name)
+      (native-names . ,native-names)
+      (advisors . ,advisors)
+      (arxiv-categories . ,arxiv-categories)
+      (email . ,email)
+      (positions . ,positions)
+      (current-position . ,current-position)
+      (timestamp . ,timestamp))))
 
 (defun inspire--reorder-name (full-name)
   "Helper function for translating the author names.
