@@ -60,17 +60,10 @@
   :group 'inspire-preferences
   :type 'boolean)
 
-(defcustom inspire-new-frame-width 200
-  "The width of the new frame created by inspire mode.
-Only effective when `inspire-pop-up-new-frame' is set to t."
+(defcustom inspire-frame-alist '((name . "*inspirehep*") (width . 240) (height . 80))
+  "The alist containing the property of inspire pop-up frame."
   :group 'inspire-preferences
-  :type 'integer)
-
-(defcustom inspire-new-frame-height 80
-  "The height of the new frame created by inspire mode.
-Only effective when `inspire-pop-up-new-frame' is set to t."
-  :group 'inspire-preferences
-  :type 'integer)
+  :type 'sexp)
 
 (defcustom inspire-default-download-folder "~/Downloads/"
   "Default download folder to save PDF file."
@@ -80,8 +73,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
 (defcustom inspire-master-bibliography-file "~/master.bib"
   "Default bibliography file `inspire-export-bibtex' exports to."
   :group 'inspire-preferences
-  :type 'string
-  )
+  :type 'string)
 
 (defcustom inspire-pdf-open-function 'find-file-other-window
   "Default function to open PDF file downloaded."
@@ -223,6 +215,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (define-key map (kbd "B") 'inspire-export-bibtex-to-file)
     (define-key map (kbd "e") 'inspire-download-pdf-export-bibtex)
     (define-key map (kbd "b") 'inspire-export-bibtex-new-buffer)
+    (define-key map (kbd "a") 'inspire-record-author-lookup)
     (define-key map (kbd "r") 'inspire-reference-search)
     (define-key map (kbd "c") 'inspire-citation-search)
     (define-key map (kbd "\[") 'inspire-previous-search)
@@ -238,6 +231,7 @@ Only effective when `inspire-pop-up-new-frame' is set to t."
     (define-key map (kbd "B") 'inspire-export-bibtex-to-file)
     (define-key map (kbd "e") 'inspire-download-pdf-export-bibtex)
     (define-key map (kbd "b") 'inspire-export-bibtex-new-buffer)
+    (define-key map (kbd "a") 'inspire-record-author-lookup)
     (define-key map (kbd "r") 'inspire-reference-search)
     (define-key map (kbd "c") 'inspire-citation-search)
     (define-key map (kbd "\[") 'inspire-previous-search)
@@ -300,6 +294,7 @@ List the results in a new buffer."
   (interactive "sSearch for literature on inspirehep: ")
   (if (string-match "^ *$" query-string)
       (message "Search condition cannot be blank.")
+    (message "Fetching search results for literature/q=%s on inspirehep..." query-string)
     (if-let ((entry-temp (inspire-parse-literature
 			   (format "%sliterature?sort=mostrecent&size=%s&q=%s"
 				   inspire-api-url
@@ -312,7 +307,8 @@ List the results in a new buffer."
 	  (inspire--push-to-history)
 	  (inspire--setup-windows)
 	  (inspire-populate-page)
-	  (inspire-populate-record))
+	  (inspire-populate-record)
+	  (message "Search finished with %s results." inspire-query-total-hits))
       (message "No matching search result."))))
 
 ;;;###autoload
@@ -322,6 +318,7 @@ List the author details and their publication in a new buffer."
   (interactive "sSearch for author on inspirehep: ")
   (if (string-match "^ *$" query-string)
       (message "Search condition cannot be blank.")
+    (message "Fetching search results for author/q=%s on inspirehep..." query-string)
     (let* ((authors (inspire-parse-author (concat inspire-api-url "authors?sort=bestmatch&size=" (format "%s" inspire-query-size) "&q=" query-string)))
 	   (candidates (seq-map 'inspire--author-format-completion-string authors))
 	   (selected))
@@ -357,6 +354,7 @@ AUTHOR-ID has to be a 6 or 7-digit number which is the control number
  associated to the author. This function does not work with other
  ids, such as inspire BAI or ORCID."
   (interactive "sLook up author record on inspirehep (7-digit control number): ")
+  (message "Fetching record author/%s on inspirehep..." author-id)
   (setq inspire-author-data (inspire-parse-author (format "%sauthors/%s" inspire-api-url author-id)))
   (inspire--setup-windows)
   (inspire-populate-author-data)
@@ -395,8 +393,8 @@ AUTHOR-ID has to be a 6 or 7-digit number which is the control number
   (when inspire-pop-up-new-frame
     (unless (frame-live-p inspire-frame)
       (setq inspire-frame
-	    (make-frame `((name . "*inspirehep*") (width . ,inspire-new-frame-width) (height . ,inspire-new-frame-height)))))
-    (select-frame  inspire-frame))
+	    (make-frame inspire-frame-alist)))
+    (select-frame inspire-frame))
 
   (unless (buffer-live-p inspire-record-buffer)
     (setq inspire-record-buffer (get-buffer-create "*inspire-record*"))
@@ -548,6 +546,19 @@ If CONFIRM is nil, ask user for confirmation."
       (when (or confirm (y-or-n-p "Look up articles citing this item? "))
 	(inspire-literature-search (format "refersto:recid:%s" id)))))
 
+(defun inspire-record-author-lookup ()
+  "Look up the profile of one of the author of the current record."
+  (interactive)
+  (let* ((entry (nth inspire-current-entry inspire-entry-list))
+	 (authors (alist-get 'authors entry))
+	 (select (completing-read "Look up author profile: "
+				  (seq-map (lambda (x) (alist-get 'name x)) authors)
+				  nil t)))
+    (if-let ((recid
+	      (alist-get 'recid (seq-find (lambda (x) (equal select (alist-get 'name x))) authors))))
+	(inspire-author-record recid)
+      (message "%s has no available record on inspirehep." select))))
+
 (defun inspire-get-bibtex ()
   "Return bibtex information for the current entry."
   (interactive)
@@ -564,13 +575,13 @@ The location of the file is specified by BIB-FILE.
 The default location is set by `inspire-master-bibtex-file'."
   (interactive (list (read-file-name "export to bibliography file: "
 				     (expand-file-name inspire-master-bibliography-file) nil 'confirm)))
-  (with-temp-buffer
-    (find-file bib-file)
+  (with-temp-file bib-file
+    (insert-file-contents bib-file)
+    (goto-char (point-max))
     (when (not (looking-at "^")) (insert "\n"))
     (insert (inspire-get-bibtex))
     (goto-char (point-max))
-    (when (not (looking-at "^")) (insert "\n"))
-    (save-buffer)))
+    (when (not (looking-at "^")) (insert "\n"))))
 
 (defun inspire-export-bibtex-new-buffer ()
   "Get bibtex information for current entry and display it in a temporary buffer."
@@ -612,19 +623,18 @@ Return the path of downloaded PDF."
   "Download the PDF and export the bibTeX for the current record."
   (interactive)
   (inspire-download-pdf)
-  (funcall-interactively 'inspire-export-bibtex))
+  (funcall-interactively 'inspire-export-bibtex-to-file))
 
 (defun inspire-exit ()
   "Quit inspire-mode and kill all related buffers."
   (interactive)
   (when (window-live-p inspire-author-window)
-    (quit-restore-window inspire-search-window 'kill)
     (quit-restore-window inspire-author-window 'kill)
     (setq inspire-author-window nil))
   (when (window-live-p inspire-record-window)
     (quit-restore-window inspire-record-window 'kill)
     (setq inspire-record-window nil))
-  (kill-buffer inspire-search-buffer)
+  (quit-restore-window inspire-search-window 'kill)
   (when inspire-record-buffer (kill-buffer inspire-record-buffer))
   (when inspire-author-buffer (kill-buffer inspire-author-buffer))
   (setq inspire-record-buffer nil
@@ -815,14 +825,14 @@ ENTRY is an alist containing all the relevant data for the record."
 		 'face 'inspire-link-face
 		 'mouse-face 'highlight
 		 'follow-link t
-		 'help-echo "reference search")
+		 'help-echo (format "Look up literature: citedby:recid:%s" (alist-get 'inspire-id entry)))
   (insert ",  ")
   (insert-button (format "%s Citations"  (alist-get 'citation-count entry))
 		 'action (lambda (_) (inspire-citation-search t))
 		 'face 'inspire-link-face
 		 'mouse-face 'highlight
 		 'follow-link t
-		 'help-echo "citation search"))
+		 'help-echo (format "Look up literature: refersto:recid:%s" (alist-get 'inspire-id entry))))
 
 (defun inspire--fill-author-data ()
   "Format and insert the author data according to `inspire-author-data'."
@@ -878,7 +888,7 @@ ENTRY is an alist containing all the relevant data for the record."
   "Call inspirehep API at URL to search for literature.
 Parse the returned results into a list of alists
 containing literature information."
-  (with-current-buffer (url-retrieve-synchronously url)
+  (with-current-buffer (url-retrieve-synchronously url t)
     (set-buffer-multibyte t)
     (goto-char (point-min))
     (search-forward "\{")
@@ -970,7 +980,7 @@ If the url query is a single author record,
 return an alist containing author info.
 If the url query is a search for matched names,
 return a list of alists with each entry formatted as above."
-  (with-current-buffer (url-retrieve-synchronously url)
+  (with-current-buffer (url-retrieve-synchronously url t)
     (set-buffer-multibyte t)
     (goto-char (point-min))
     (search-forward "\{")
