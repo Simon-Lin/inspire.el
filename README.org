@@ -18,8 +18,8 @@ Other useful commands and their default bindings:
 + ~b (inspire-export-bibtex-new-buffer)~: export the bibTeX entry to a temporary buffer
 + ~B (inspire-export-bibtex-to-file)~: export the bibtex entry to a .bib file
 + ~e (inspire-download-pdf-export-bibtex)~: download PDF and export bibTeX info to a file
-+ ~a (inspire-record-author-lookup)~ look up for a author profile in current record 
-+ ~r (inspire-reference-search)~ look up for references of the current record 
++ ~a (inspire-record-author-lookup)~: look up for a author profile in current record 
++ ~r (inspire-reference-search)~: look up for references of the current record 
 + ~c (inspire-citation-search)~: look up for citations of the current record 
 + ~[ (inspire-previous-search)~,  ~] (inspire-next-search)~: navigate through the search history
 + ~q (inspire-exit)~: exit the record list
@@ -50,12 +50,17 @@ To change the default bibTeX file that functions ~inspire-export-bibtex-to-file~
 #+begin_src elisp
   (setq inspire-master-bibliography-file "/your/preferred_file.bib")
 #+end_src
+To use absolute paths for pdf links when exporting bibTeX entries:
+#+begin_src elisp
+  (setq inspire-pdf-use-absolute-path t)
+#+end_src
 ** pdf view function
 To change the default pdf viewing function, set the variable ~inspire-pdf-open-function~ accordingly.
 For example, to open in Preview.app in macOS:
 #+begin_src elisp
   (setq inspire-pdf-open-function (lambda (fpath) (call-process "open" nil 0 nil "-a" "/Applications/Preview.app" fpath)))
 #+end_src
+
 
 * TO DO list
 + check the existence of bib record in bib file and ask if wish to replace

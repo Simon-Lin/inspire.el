@@ -75,6 +75,11 @@
   :group 'inspire-preferences
   :type 'string)
 
+(defcustom inspire-pdf-use-absolute-path nil
+  "Whether to use relative path name when exporting bibtex entries."
+  :group 'inspire-preferences
+  :type 'boolean)
+
 (defcustom inspire-pdf-open-function 'find-file-other-window
   "Default function to open PDF file downloaded."
   :group 'inspire-preferences
@@ -564,24 +569,31 @@ If CONFIRM is nil, ask user for confirmation."
   (interactive)
   (if-let ((url (alist-get 'bib-link (nth inspire-current-entry inspire-entry-list))))
       (with-temp-buffer
-	(url-insert (url-retrieve-synchronously url))
+	(message "Retrieving bibTeX information from inspirehep...")
+	(url-insert (url-retrieve-synchronously url t))
 	(buffer-string))
     (message "No bibTeX information for this item.")
     nil))
 
-(defun inspire-export-bibtex-to-file (bib-file)
+(defun inspire-export-bibtex-to-file (&optional pdf-path)
   "Export bibtex information for current entry and append to a file.
-The location of the file is specified by BIB-FILE.
-The default location is set by `inspire-master-bibtex-file'."
-  (interactive (list (read-file-name "export to bibliography file: "
+The default location is set by `inspire-master-bibtex-file'.
+With optional argument PDF-PATH, add a link to the local document location."
+  (interactive)
+  (let ((bib-file (read-file-name "export to bibliography file: "
 				     (expand-file-name inspire-master-bibliography-file) nil 'confirm)))
-  (with-temp-file bib-file
-    (insert-file-contents bib-file)
-    (goto-char (point-max))
-    (when (not (looking-at "^")) (insert "\n"))
-    (insert (inspire-get-bibtex))
-    (goto-char (point-max))
-    (when (not (looking-at "^")) (insert "\n"))))
+    (with-temp-file bib-file
+      (insert-file-contents bib-file)
+      (goto-char (point-max))
+      (when (not (looking-at "^")) (insert "\n"))
+      (insert (inspire-get-bibtex))
+      (when pdf-path
+	(if inspire-pdf-use-absolute-path
+	    (setq pdf-path (expand-file-name pdf-path))
+	  (setq pdf-path (file-relative-name pdf-path (file-name-directory bib-file))))
+	(backward-char 3)
+	(insert (format ",\n    file = {:%s:pdf}" pdf-path))))
+    (message "bibTeX entry written to %s." bib-file)))
 
 (defun inspire-export-bibtex-new-buffer ()
   "Get bibtex information for current entry and display it in a temporary buffer."
@@ -597,33 +609,33 @@ The default location is set by `inspire-master-bibtex-file'."
 If ASK-IF-OPEN is non-nil, ask the user whether to open the file in addition.
 Return the path of downloaded PDF."
   (interactive)
-  (if-let ((docs (alist-get 'files (nth inspire-current-entry inspire-entry-list)))
-	   (key (or (alist-get 'bib-key (nth inspire-current-entry inspire-entry-list) "document"))))
+  (if-let ((docs (alist-get 'files (nth inspire-current-entry inspire-entry-list))))
       (progn
 	(let* ((selected) (url) (newfile))
-	  (print docs)
 	  (setq selected (completing-read "Download from source: "
 					  (seq-map (lambda (x) (alist-get 'description x)) docs)
 					  nil t))
 	  (setq selected (seq-find (lambda (x) (equal (alist-get 'description x) selected)) docs))
 	  (setq url (alist-get 'url selected))
-	  (setq key (replace-regexp-in-string ":" "-" key)) ; file system does not support ":" as valid file name
+	  (string-match "/\\([^/]+\\)$" url)
+	  (setq newfile (match-string 1 url))
 	  (unless pdf-path
 	    (setq pdf-path (read-file-name "Save pdf as: "
 					   inspire-default-download-folder
-					   nil nil (concat key ".pdf"))))
-	  (setq newfile (url-copy-file url pdf-path 1))
+					   nil nil (concat newfile ".pdf"))))
+	  (ignore-error 'file-already-exists
+	    (setq newfile (url-copy-file url pdf-path 1)))
 	  (if ask-if-open
 	      (when (yes-or-no-p (format "%s saved. Open file? " pdf-path))
 		(funcall inspire-pdf-open-function newfile))
-	    (message (format "%s saved." pdf-path)))))
+	    (message "%s saved." pdf-path)
+	    pdf-path)))
     (message "No available files for download.")))
 
 (defun inspire-download-pdf-export-bibtex ()
   "Download the PDF and export the bibTeX for the current record."
   (interactive)
-  (inspire-download-pdf)
-  (funcall-interactively 'inspire-export-bibtex-to-file))
+  (funcall 'inspire-export-bibtex-to-file (inspire-download-pdf)))
 
 (defun inspire-exit ()
   "Quit inspire-mode and kill all related buffers."
@@ -778,7 +790,7 @@ ENTRY is an alist containing all the relevant data for the record."
       (if (alist-get 'recid author)
 	  (insert-button (alist-get 'name author)
 			 'action (lambda (_) (inspire-author-record (alist-get 'recid author)))
-			 'face '(:inherit inspire-author-face :underline t)
+			 'face '(:inherit inspire-author-face :underline t :height 1.1)
 			 'mouse-face 'highlight
 			 'follow-link t
 			 'help-echo (format "Look up profile: author/%s" (alist-get 'recid author)))
@@ -786,7 +798,7 @@ ENTRY is an alist containing all the relevant data for the record."
       (when (alist-get 'affiliation author)
 	(inspire--insert-with-face
 	 (format " (%s)" (mapconcat 'identity (alist-get 'affiliation author) ", "))
-	 inspire-author-face))
+	 '(:inherit inspire-author-face :height 1.0)))
       (inspire--insert-with-face ", " inspire-author-face)))
   (delete-char -2)
   (inspire--insert-with-face (format "\n%s\n\n" (alist-get 'date entry)) inspire-date-face)
@@ -864,9 +876,26 @@ ENTRY is an alist containing all the relevant data for the record."
 	('"master" (inspire--insert-with-face "Master " inspire-subfield-face))
 	('"bachelor" (inspire--insert-with-face "Bachelor " inspire-subfield-face)))
       (inspire--insert-with-face "Advisor: " inspire-subfield-face)
-      (inspire--insert-with-face (alist-get 'name advisor) inspire-author-face)))
+
+      (if (alist-get 'recid advisor)
+	  (insert-button (alist-get 'name advisor)
+			 'action (lambda (_) (inspire-author-record (alist-get 'recid advisor)))
+			 'face '(:inherit inspire-author-face :underline t)
+			 'mouse-face 'highlight
+			 'follow-link t
+			 'help-echo (format "Look up profile: author/%s" (alist-get 'recid advisor)))
+	(insert-button (alist-get 'name advisor)
+		       'action (lambda (_) (inspire-author-search (alist-get 'name advisor)))
+		       'face '(:inherit inspire-author-face :underline t)
+		       'mouse-face 'highlight
+		       'follow-link t
+		       'help-echo (format "Search for author: %s" (alist-get 'name advisor))))))
+      
+
+  ;; email
   (when-let ((email (alist-get 'email inspire-author-data)))
-    (inspire--insert-with-face (format "\nemail: %s" email) inspire-subfield-face))
+    (inspire--insert-with-face "\nemail: " inspire-subfield-face)
+    (inspire--insert-url email (format "mailto:%s" email)))
   (insert "\n")
 
   ;; education and employment history
@@ -944,7 +973,7 @@ containing literature information."
 	  (setq type (map-nested-elt metadata '(document_type 0)))
 	  
 	  (when eprint
-	    (push `((url . ,(format "https://arxiv.org/pdf/%s.pdf" (alist-get 'value eprint)))
+	    (push `((url . ,(format "https://arxiv.org/pdf/%s" (alist-get 'value eprint)))
 		    (description . "arXiv"))
 		  files))
 	  (when-let ((docs (alist-get 'documents metadata)))
@@ -1007,11 +1036,17 @@ return a list of alists with each entry formatted as above."
 		   (inspire--reorder-name (map-nested-elt metadata '(name value)))))
     (when-let ((nat (map-nested-elt metadata '(name native_names))))
       (setq native-names (mapconcat 'identity nat ", ")))
-    (when-let ((adv (seq-filter (lambda (x) (not (eq (alist-get 'hidden x) t))) (alist-get 'advisors metadata))))
-      (setq advisors
-	    (seq-map (lambda (x)
-		       `((type . ,(alist-get 'degree_type x)) (name . ,(inspire--reorder-name (alist-get 'name x)))))
-		     adv)))
+    (when-let ((advs (seq-filter (lambda (x) (not (eq (alist-get 'hidden x) t))) (alist-get 'advisors metadata))))
+      (seq-do (lambda (adv)
+		(let* ((type  (alist-get 'degree_type adv))
+		       (name  (inspire--reorder-name (alist-get 'name adv)))
+		       (recid (map-nested-elt adv '(record $ref))))
+		  (when recid
+		      (string-match "^https://inspirehep.net/api/authors/\\([0-9]+\\)$" recid)
+		      (setq recid (match-string 1 recid)))
+		  (push `((type . ,type) (name . ,name) (recid . ,recid)) advisors)))
+	      advs)
+      (setq advisors (nreverse advisors)))
     (when-let ((cat (alist-get 'arxiv_categories metadata)))
       (setq arxiv-categories (mapconcat (lambda (cat) (format "[%s]" cat)) cat " ")))
     (setq email (map-nested-elt metadata '(email_addresses 0 value)))
@@ -1050,7 +1085,6 @@ return a list of alists with each entry formatted as above."
       (positions . ,positions)
       (current-position . ,current-position)
       (timestamp . ,timestamp))))
-
 (defun inspire--reorder-name (full-name)
   "Helper function for translating the author names.
 Recast string FULL-NAME from \"last_name, first_name\"
