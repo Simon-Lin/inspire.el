@@ -64,5 +64,6 @@ For example, to open in Preview.app in macOS:
 
 * TO DO list
 + check the existence of bib record in bib file and ask if wish to replace
-+ show experiment info in author page
++ ability to click on experiment and search
++ fix large experiment stutter issue (main bottleneck seem to be ~url-retrieve~)
 + reference list in record page

@@ -3,7 +3,10 @@
 ;; Copyright (C) 2023  Simon Lin
 
 ;; Author: Simon Lin <n.sibetz@gmail.com>
+;; URL: https://github.com/Simon-Lin/inspire.el
 ;; Keywords: extensions, tex
+;; Package-Requires: ((emacs "27.1"))
+;; This file is not part of GNU Emacs.
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -313,7 +316,7 @@ List the results in a new buffer."
 	  (inspire--setup-windows)
 	  (inspire-populate-page)
 	  (inspire-populate-record)
-	  (message "Search finished with %s results." inspire-query-total-hits))
+	  (message "Found %s results." inspire-query-total-hits))
       (message "No matching search result."))))
 
 ;;;###autoload
@@ -342,15 +345,18 @@ List the author details and their publication in a new buffer."
 				 authors))
       (inspire--setup-windows)
       (inspire-populate-author-data)
+      (redisplay)
       
       ;; search and display authored literature
+      (message "Looking up literature authored by %s..." (alist-get 'name inspire-author-data))
       (setq inspire-query-string (format "a= %s" (alist-get 'inspire-bai inspire-author-data)))
       (setq inspire-entry-list
 	    (inspire-parse-literature
 	     (format "%sliterature?sort=mostrecent&size=%s&q=%s" inspire-api-url inspire-query-size inspire-query-string)))
       (inspire--push-to-history)
       (inspire-populate-page)
-      (inspire-populate-record))))
+      (inspire-populate-record)
+      (message "Found %s results." inspire-query-total-hits))))
 
 ;;;###autoload
 (defun inspire-author-record (author-id)
@@ -363,22 +369,27 @@ AUTHOR-ID has to be a 6 or 7-digit number which is the control number
   (setq inspire-author-data (inspire-parse-author (format "%sauthors/%s" inspire-api-url author-id)))
   (inspire--setup-windows)
   (inspire-populate-author-data)
+  (redisplay)
   
   ;; search and display authored literature
+  (message "Looking up literature authored by %s..." (alist-get 'name inspire-author-data))
   (setq inspire-query-string (format "a= %s" (alist-get 'inspire-bai inspire-author-data)))
   (setq inspire-entry-list
 	(inspire-parse-literature
 	 (format "%sliterature?sort=mostrecent&size=%s&q=%s" inspire-api-url inspire-query-size inspire-query-string)))
   (inspire--push-to-history)
   (inspire-populate-page)
-  (inspire-populate-record))
+  (inspire-populate-record)
+  (message "Found with %s results." inspire-query-total-hits))
 
 (defun inspire--author-format-completion-string (author-alist)
   "Format the entry for `completing-read' from AUTHOR-ALIST."
   (let ((name (alist-get 'name author-alist))
-	(key  (alist-get 'inspire-bai author-alist))
-	(pos  (alist-get 'current-position author-alist))
-	(cat  (alist-get 'arxiv-categories author-alist)))
+	(native (alist-get 'native-names author-alist))
+	(key (alist-get 'inspire-bai author-alist))
+	(pos (alist-get 'current-position author-alist))
+	(cat (alist-get 'arxiv-categories author-alist)))
+    (when native (setq name (format "%s (%s)" name native)))
     (setq name (propertize name 'face 'inspire-author-heading-face))
     (setq key  (propertize key 'face 'shadow))
     (setq pos (if pos
@@ -768,7 +779,7 @@ With non-nil START-ENTRY, start from there instead."
        (inspire--insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.2))
        (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
 	   (inspire--insert-with-face
-	    (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
+	    (mapconcat (lambda (coll) (format "%s collaboration" coll)) collaborations ", ") inspire-author-face)
 	 (let ((names (mapcar (lambda (author) (alist-get 'name author)) (alist-get 'authors entry))))
 	   (inspire--insert-with-face (mapconcat 'identity (seq-take names 5) ", ") inspire-author-face)
 	   (when (> (length names) 5)
@@ -785,7 +796,7 @@ ENTRY is an alist containing all the relevant data for the record."
   (inspire--insert-with-face "\n" inspire-title-face)
   (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
       (inspire--insert-with-face
-       (mapconcat (lambda (coll) (format "%s collaborations" coll)) collaborations ", ") inspire-author-face)
+       (mapconcat (lambda (coll) (format "%s collaboration" coll)) collaborations ", ") inspire-author-face)
     (seq-doseq (author (alist-get 'authors entry)) ; author list
       (if (alist-get 'recid author)
 	  (insert-button (alist-get 'name author)
@@ -799,8 +810,8 @@ ENTRY is an alist containing all the relevant data for the record."
 	(inspire--insert-with-face
 	 (format " (%s)" (mapconcat 'identity (alist-get 'affiliation author) ", "))
 	 '(:inherit inspire-author-face :height 1.0)))
-      (inspire--insert-with-face ", " inspire-author-face)))
-  (delete-char -2)
+      (inspire--insert-with-face ", " inspire-author-face))
+      (delete-char -2))
   (inspire--insert-with-face (format "\n%s\n\n" (alist-get 'date entry)) inspire-date-face)
   
   ;; pages and publication info
@@ -862,6 +873,8 @@ ENTRY is an alist containing all the relevant data for the record."
   (when-let ((arxiv-cat (alist-get 'arxiv-categories inspire-author-data)))
     (inspire--insert-with-face arxiv-cat inspire-arxiv-category-face)
     (insert "\n"))
+  (when-let ((proj (alist-get 'projects inspire-author-data)))
+      (inspire--insert-with-face (format "\nExperiments: %s" proj) inspire-subfield-face))
   (inspire--insert-with-face "\nAuthor id: " inspire-subfield-face)
   (inspire--insert-url (alist-get 'inspire-bai inspire-author-data)
 		      (format "https://inspirehep.net/authors/%s" (alist-get 'control-number inspire-author-data)))
@@ -948,12 +961,14 @@ containing literature information."
 	  (setq reference-count (seq-length (alist-get 'references metadata)))
 	  (setq number-of-pages (alist-get 'number_of_pages metadata))
 	  (setq inspire-id (alist-get 'id entry))
-	  (setq authors (seq-map (lambda (elem) `((name . ,(inspire--reorder-name (alist-get 'full_name elem)))
-					     (affiliation . ,(mapcar (lambda (aff) (alist-get 'value aff)) (alist-get 'affiliations elem)))
-					     (recid . ,(alist-get 'recid elem))))
-				 (alist-get 'authors metadata)))
 	  (setq collaborations (and (alist-get 'collaborations metadata)
 				    (seq-map (lambda (elem) (alist-get 'value elem)) (alist-get 'collaborations metadata))))
+	  (setq authors (seq-map
+			 (lambda (elem) `((name . ,(inspire--reorder-name (alist-get 'full_name elem)))
+				     (affiliation . ,(mapcar (lambda (aff) (alist-get 'value aff)) (alist-get 'affiliations elem)))
+				     (recid . ,(alist-get 'recid elem))))
+			 (alist-get 'authors metadata)))
+
 	  (when-let (pubs (alist-get 'publication_info metadata))
 	    (seq-doseq (pub pubs)
 	      (cond ((alist-get 'journal_title pub)    ; journal
@@ -966,8 +981,7 @@ containing literature information."
 			     ((eval pstart) (setq journals (cons (format "%s %s (%s) %s" jtitle jvol jyear pstart) journals)))
 			     (t (setq journals (cons (format "%s %s (%s)" jtitle jvol jyear) journals))))))
 		    ((alist-get 'cnum pub)    ; conference
-		     (setq conferences (cons (format "%s" (alist-get 'cnum pub)) conferences)))
-		    )))
+		     (setq conferences (cons (format "%s" (alist-get 'cnum pub)) conferences))))))
 	  (setq note (when-let (raw (map-nested-elt metadata '(public_notes 0 value)))
 		       (replace-regexp-in-string "\n" "" raw))) ; strip off extra EOLs
 	  (setq type (map-nested-elt metadata '(document_type 0)))
@@ -1027,7 +1041,7 @@ return a list of alists with each entry formatted as above."
 (defun inspire--parse-author-entry (entry)
   "Parse ENTRY and return an alist containing author information."
   (let ((metadata (alist-get 'metadata entry))
-	(ids) (inspire-bai) (orcid) (control-number) (name) (native-names) (advisors) (positions) (current-position) (arxiv-categories) (email) (timestamp))
+	(ids) (inspire-bai) (orcid) (control-number) (name) (native-names) (advisors) (positions) (current-position) (arxiv-categories) (projects) (email) (timestamp))
     (setq ids (alist-get 'ids metadata))
     (setq inspire-bai (alist-get 'value (seq-find (lambda (x) (equal (alist-get 'schema x) "INSPIRE BAI")) ids)))
     (setq orcid (alist-get 'value (seq-find (lambda (x) (equal (alist-get 'schema x) "ORCID")) ids)))
@@ -1049,6 +1063,8 @@ return a list of alists with each entry formatted as above."
       (setq advisors (nreverse advisors)))
     (when-let ((cat (alist-get 'arxiv_categories metadata)))
       (setq arxiv-categories (mapconcat (lambda (cat) (format "[%s]" cat)) cat " ")))
+    (when-let ((projs (alist-get 'project_membership metadata)))
+      (setq projects (mapconcat (lambda (proj) (alist-get 'name proj)) projs ", ")))
     (setq email (map-nested-elt metadata '(email_addresses 0 value)))
     (string-match "^\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (alist-get 'updated entry))
     (setq timestamp (match-string 1 (alist-get 'updated entry)))
@@ -1081,6 +1097,7 @@ return a list of alists with each entry formatted as above."
       (native-names . ,native-names)
       (advisors . ,advisors)
       (arxiv-categories . ,arxiv-categories)
+      (projects . ,projects)
       (email . ,email)
       (positions . ,positions)
       (current-position . ,current-position)
