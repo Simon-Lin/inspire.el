@@ -380,7 +380,7 @@ AUTHOR-ID has to be a 6 or 7-digit number which is the control number
   (inspire--push-to-history)
   (inspire-populate-page)
   (inspire-populate-record)
-  (message "Found with %s results." inspire-query-total-hits))
+  (message "Found %s results." inspire-query-total-hits))
 
 (defun inspire--author-format-completion-string (author-alist)
   "Format the entry for `completing-read' from AUTHOR-ALIST."
@@ -776,7 +776,7 @@ With non-nil START-ENTRY, start from there instead."
   (seq-do-indexed
    (lambda (entry index)
      (unless (and start-entry (< index start-entry))
-       (inspire--insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.2))
+       (inspire--insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.15))
        (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
 	   (inspire--insert-with-face
 	    (concat (mapconcat 'identity collaborations " and ") " collaboration") inspire-author-face)

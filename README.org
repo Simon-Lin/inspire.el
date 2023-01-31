@@ -4,6 +4,8 @@
 
 inspire.el is an Emacs interface for literature and references searching on the high energy article database [[https://inspirehep.net][inspirehep]].
 
+[[./screenshot.png]]
+
 * Common usage
 inspire.el provides two main entry functions for searching on [[https://inspirehep.net][inspirehep]]: \\
 ~inspire-literature-search~ for literature lookup, and ~inspire-author-search~ for author lookup.
