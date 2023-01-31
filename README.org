@@ -6,9 +6,9 @@ inspire.el is an Emacs interface for literature and references searching on the 
 
 * Common usage
 inspire.el provides two main entry functions for searching on [[https://inspirehep.net][inspirehep]]: \\
-~inspire-literature-search~ for literature lookup, and ~inspire-author-search~ for author lookup. \\
-The [[https://help.inspirehep.net/knowledge-base/inspire-paper-search/][SPIRES syntax]] is available for ~inspire-literature-search~ function.
+~inspire-literature-search~ for literature lookup, and ~inspire-author-search~ for author lookup.
 inspire.el will then pop-up a list of records where one can browse and examine detailed information for each record.
+The [[https://help.inspirehep.net/knowledge-base/inspire-paper-search/][SPIRES syntax]] is available for ~inspire-literature-search~ function.
 
 
 In the record list, use ~n~ and ~p~ to navigate through the list. \\
@@ -64,6 +64,5 @@ For example, to open in Preview.app in macOS:
 
 * TO DO list
 + check the existence of bib record in bib file and ask if wish to replace
-+ ability to click on experiment and search
-+ fix large experiment stutter issue (main bottleneck seem to be ~url-retrieve~)
++ large experiment stutter issue (couldn't really fix, author list too long for big experiments like LHC)
 + reference list in record page

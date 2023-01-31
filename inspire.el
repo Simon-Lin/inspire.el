@@ -53,7 +53,7 @@
   :group 'inspire-preferences
   :type 'boolean)
 
-(defcustom inspire-query-size 30
+(defcustom inspire-query-size 25
   "Number of entries per page when fetching from inspirehep API."
   :group 'inspire-preferences
   :type 'integer)
@@ -779,7 +779,7 @@ With non-nil START-ENTRY, start from there instead."
        (inspire--insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.2))
        (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
 	   (inspire--insert-with-face
-	    (mapconcat (lambda (coll) (format "%s collaboration" coll)) collaborations ", ") inspire-author-face)
+	    (concat (mapconcat 'identity collaborations " and ") " collaboration") inspire-author-face)
 	 (let ((names (mapcar (lambda (author) (alist-get 'name author)) (alist-get 'authors entry))))
 	   (inspire--insert-with-face (mapconcat 'identity (seq-take names 5) ", ") inspire-author-face)
 	   (when (> (length names) 5)
@@ -795,8 +795,17 @@ ENTRY is an alist containing all the relevant data for the record."
   (inspire--insert-with-face (format "\n%s\n" (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.3))
   (inspire--insert-with-face "\n" inspire-title-face)
   (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
-      (inspire--insert-with-face
-       (mapconcat (lambda (coll) (format "%s collaboration" coll)) collaborations ", ") inspire-author-face)
+      (progn
+	(seq-doseq (coll collaborations)
+	  (insert-button coll
+			 'action (lambda (_) (inspire-literature-search (concat "collaboration:" coll)))
+			 'face '(:inherit inspire-author-face :underline t :height 1.1)
+			 'mouse-face 'highlight
+			 'follow-link t
+			 'help-echo (format "Look up: %s collaboration" coll))
+	  (inspire--insert-with-face " and " inspire-author-face))
+	(delete-char -5)
+	(inspire--insert-with-face " collaboration" inspire-author-face))
     (seq-doseq (author (alist-get 'authors entry)) ; author list
       (if (alist-get 'recid author)
 	  (insert-button (alist-get 'name author)
@@ -838,7 +847,9 @@ ENTRY is an alist containing all the relevant data for the record."
 
   ;; abstract & notes
   (when-let (abstract (alist-get 'abstract entry))
-    (inspire--insert-with-face (format "Abstract: (%s)\n%s\n\n" (alist-get 'source abstract) (alist-get 'value abstract)) inspire-abstract-face))
+    (if-let (source (alist-get 'source abstract))
+	(inspire--insert-with-face (format "Abstract: (%s)\n%s\n\n" source (alist-get 'value abstract)) inspire-abstract-face)
+      (inspire--insert-with-face (format "Abstract:\n%s\n\n" (alist-get 'value abstract)) inspire-abstract-face)))
   (when-let (notes (alist-get 'note entry))
     (inspire--insert-with-face (format "Note: %s\n\n" notes) inspire-abstract-face))
   
