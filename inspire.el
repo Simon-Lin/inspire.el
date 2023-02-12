@@ -4,6 +4,7 @@
 
 ;; Author: Simon Lin <n.sibetz@gmail.com>
 ;; URL: https://github.com/Simon-Lin/inspire.el
+;; Version: 0.0.1
 ;; Keywords: extensions, tex
 ;; Package-Requires: ((emacs "27.1"))
 ;; This file is not part of GNU Emacs.
@@ -23,7 +24,33 @@
 
 ;;; Commentary:
 
-;; 
+;; inspire.el is an Emacs interface for literature and references searching
+;; on the high energy article database inspirehep.net.
+
+;; Common usage
+;; ============
+
+;; inspire.el provides two main entry functions for searching on inspirehep:
+;; `inspire-literature-search` for literature lookup,
+;; and `inspire-author-search` for author lookup.
+;; inspire.el will then pop-up a list of records where one can browse and examine detailed information for each record.
+;; The SPIRES syntax (https://help.inspirehep.net/knowledge-base/inspire-paper-search)
+;; is available for `inspire-literature-search` function.
+
+;; In the record list, use `n` and `p` to navigate through the list.
+;; Other useful commands and their default bindings:
+;; `u` `inspire-open-url` : open the web page associated to the item
+;; `d` `inspire-download-pdf` : download PDF from a selected source
+;; `b` `inspire-export-bibtex-new-buffer` : export the bibTeX entry to a temporary buffer
+;; `B` `inspire-export-bibtex-to-file` : export the bibtex entry to a .bib file
+;; `e` `inspire-download-pdf-export-bibtex` : download PDF and export bibTeX info to a file
+;; `a` `inspire-record-author-lookup` : look up for a author profile in current record
+;; `r` `inspire-reference-search` : look up for references of the current record
+;; `c` `inspire-citation-search` : look up for citations of the current record
+;; `[` `inspire-previous-search`, `]` `inspire-next-search` : navigate through the search history
+;; `q` `inspire-exit` : exit the record list
+
+;; Some texts in the record or author information buffer are clickable and will preform corresponding action when clicked upon.
 
 ;;; Code:
 
@@ -83,7 +110,7 @@
   :group 'inspire-preferences
   :type 'boolean)
 
-(defcustom inspire-pdf-open-function 'find-file-other-window
+(defcustom inspire-pdf-open-function #'find-file-other-window
   "Default function to open PDF file downloaded."
   :group 'inspire-preferences
   :type 'function)
@@ -187,7 +214,7 @@
   "Overlay for displaying the selected record in inspire record list.")
 
 (defvar inspire-frame nil
-  "Current frame used for displaying inspire-mode buffers.")
+  "Current frame used for displaying `inspire-mode' buffers.")
 
 (defvar inspire-search-buffer nil
   "Current buffer for displaying inspire search results.")
@@ -405,7 +432,7 @@ AUTHOR-ID has to be a 6 or 7-digit number which is the control number
 	    key)))
 
 (defun inspire--setup-windows ()
-  "Setup window and buffer configuration for inspire-mode."
+  "Setup window and buffer configuration for `inspire-mode'."
   (when inspire-pop-up-new-frame
     (unless (frame-live-p inspire-frame)
       (setq inspire-frame
@@ -649,7 +676,7 @@ Return the path of downloaded PDF."
   (funcall 'inspire-export-bibtex-to-file (inspire-download-pdf)))
 
 (defun inspire-exit ()
-  "Quit inspire-mode and kill all related buffers."
+  "Quit `inspire-mode' and kill all related buffers."
   (interactive)
   (when (window-live-p inspire-author-window)
     (quit-restore-window inspire-author-window 'kill)
