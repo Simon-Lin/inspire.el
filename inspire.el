@@ -58,6 +58,7 @@
 (require 'map)
 (require 'json)
 (require 'bibtex)
+(require 'url-handlers)
 
 
 ;;; customization group
@@ -239,47 +240,47 @@
 
 (defvar inspire-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "p") 'inspire-prev-entry)
-    (define-key map (kbd "n") 'inspire-next-entry)
-    (define-key map (kbd "RET") '("Switch to record window."
+    (define-key map (kbd "p") #'inspire-prev-entry)
+    (define-key map (kbd "n") #'inspire-next-entry)
+    (define-key map (kbd "RET") #'("Switch to record window."
 				  . (lambda () (interactive) (select-window inspire-record-window))))
-    (define-key map (kbd "u") 'inspire-open-url)
-    (define-key map (kbd "SPC") 'inspire-select-entry)
-    (define-key map (kbd "q") 'inspire-exit)
-    (define-key map (kbd "d") 'inspire-download-pdf)
-    (define-key map (kbd "B") 'inspire-export-bibtex-to-file)
-    (define-key map (kbd "e") 'inspire-download-pdf-export-bibtex)
-    (define-key map (kbd "b") 'inspire-export-bibtex-new-buffer)
-    (define-key map (kbd "a") 'inspire-record-author-lookup)
-    (define-key map (kbd "r") 'inspire-reference-search)
-    (define-key map (kbd "c") 'inspire-citation-search)
-    (define-key map (kbd "\[") 'inspire-previous-search)
-    (define-key map (kbd "\]") 'inspire-next-search)
+    (define-key map (kbd "u") #'inspire-open-url)
+    (define-key map (kbd "SPC") #'inspire-select-entry)
+    (define-key map (kbd "q") #'inspire-exit)
+    (define-key map (kbd "d") #'inspire-download-pdf)
+    (define-key map (kbd "B") #'inspire-export-bibtex-to-file)
+    (define-key map (kbd "e") #'inspire-download-pdf-export-bibtex)
+    (define-key map (kbd "b") #'inspire-export-bibtex-new-buffer)
+    (define-key map (kbd "a") #'inspire-record-author-lookup)
+    (define-key map (kbd "r") #'inspire-reference-search)
+    (define-key map (kbd "c") #'inspire-citation-search)
+    (define-key map (kbd "\[") #'inspire-previous-search)
+    (define-key map (kbd "\]") #'inspire-next-search)
     map))
 
 (defvar inspire-record-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "RET") 'inspire-open-url)
-    (define-key map (kbd "u") 'inspire-open-url)
-    (define-key map (kbd "q") 'inspire-exit)
-    (define-key map (kbd "d") 'inspire-download-pdf)
-    (define-key map (kbd "B") 'inspire-export-bibtex-to-file)
-    (define-key map (kbd "e") 'inspire-download-pdf-export-bibtex)
-    (define-key map (kbd "b") 'inspire-export-bibtex-new-buffer)
-    (define-key map (kbd "a") 'inspire-record-author-lookup)
-    (define-key map (kbd "r") 'inspire-reference-search)
-    (define-key map (kbd "c") 'inspire-citation-search)
-    (define-key map (kbd "\[") 'inspire-previous-search)
-    (define-key map (kbd "\]") 'inspire-next-search)
+    (define-key map (kbd "RET") #'inspire-open-url)
+    (define-key map (kbd "u") #'inspire-open-url)
+    (define-key map (kbd "q") #'inspire-exit)
+    (define-key map (kbd "d") #'inspire-download-pdf)
+    (define-key map (kbd "B") #'inspire-export-bibtex-to-file)
+    (define-key map (kbd "e") #'inspire-download-pdf-export-bibtex)
+    (define-key map (kbd "b") #'inspire-export-bibtex-new-buffer)
+    (define-key map (kbd "a") #'inspire-record-author-lookup)
+    (define-key map (kbd "r") #'inspire-reference-search)
+    (define-key map (kbd "c") #'inspire-citation-search)
+    (define-key map (kbd "\[") #'inspire-previous-search)
+    (define-key map (kbd "\]") #'inspire-next-search)
     map))
 
 (defvar inspire-author-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "RET") 'inspire-open-url)
-    (define-key map (kbd "u") 'inspire-open-url)
-    (define-key map (kbd "q") 'inspire-exit)
-    (define-key map (kbd "\[") 'inspire-previous-search)
-    (define-key map (kbd "\]") 'inspire-next-search)
+    (define-key map (kbd "RET") #'inspire-open-url)
+    (define-key map (kbd "u") #'inspire-open-url)
+    (define-key map (kbd "q") #'inspire-exit)
+    (define-key map (kbd "\[") #'inspire-previous-search)
+    (define-key map (kbd "\]") #'inspire-next-search)
     map))
 
 (define-derived-mode inspire-mode special-mode "inspire"
@@ -355,7 +356,7 @@ List the author details and their publication in a new buffer."
       (message "Search condition cannot be blank.")
     (message "Fetching search results for author/q=%s on inspirehep..." query-string)
     (let* ((authors (inspire-parse-author (concat inspire-api-url "authors?sort=bestmatch&size=" (format "%s" inspire-query-size) "&q=" query-string)))
-	   (candidates (seq-map 'inspire--author-format-completion-string authors))
+	   (candidates (seq-map #'inspire--author-format-completion-string authors))
 	   (selected))
       (setq selected
 	    (completing-read (format "Authors search result for \"%s\": " query-string)
@@ -593,12 +594,12 @@ If CONFIRM is nil, ask user for confirmation."
   "Look up the profile of one of the author of the current record."
   (interactive)
   (let* ((entry (nth inspire-current-entry inspire-entry-list))
-	 (authors (alist-get 'authors entry))
+	 (authors_ (alist-get 'authors entry))
 	 (select (completing-read "Look up author profile: "
-				  (seq-map (lambda (x) (alist-get 'name x)) authors)
+				  (seq-map (lambda (x) (alist-get 'name x)) authors_)
 				  nil t)))
     (if-let ((recid
-	      (alist-get 'recid (seq-find (lambda (x) (equal select (alist-get 'name x))) authors))))
+	      (alist-get 'recid (seq-find (lambda (x) (equal select (alist-get 'name x))) authors_))))
 	(inspire-author-record recid)
       (message "%s has no available record on inspirehep." select))))
 
@@ -673,7 +674,7 @@ Return the path of downloaded PDF."
 (defun inspire-download-pdf-export-bibtex ()
   "Download the PDF and export the bibTeX for the current record."
   (interactive)
-  (funcall 'inspire-export-bibtex-to-file (inspire-download-pdf)))
+  (funcall #'inspire-export-bibtex-to-file (inspire-download-pdf)))
 
 (defun inspire-exit ()
   "Quit `inspire-mode' and kill all related buffers."
@@ -754,7 +755,7 @@ Which result to load is specified by INDEX."
 (defun inspire--insert-with-face (str face &rest properties)
   "Wrapper function for inserting STR with FACE.
 Additional PROPERTIES can also be specified."
-  (insert (apply 'propertize `(,str font-lock-face ,face ,@properties))))
+  (insert (apply #'propertize `(,str font-lock-face ,face ,@properties))))
 
 (defun inspire--insert-url (str url)
   "Wrapper function for inserting a web link with name STR and address URL."
@@ -806,9 +807,9 @@ With non-nil START-ENTRY, start from there instead."
        (inspire--insert-with-face (format " %s\n " (alist-get 'title entry)) '(:inherit inspire-title-face :height 1.15))
        (if-let (collaborations (alist-get 'collaborations entry))  ; if there is collaborations then don't show authors list
 	   (inspire--insert-with-face
-	    (concat (mapconcat 'identity collaborations " and ") " collaboration") inspire-author-face)
+	    (concat (mapconcat #'identity collaborations " and ") " collaboration") inspire-author-face)
 	 (let ((names (mapcar (lambda (author) (alist-get 'name author)) (alist-get 'authors entry))))
-	   (inspire--insert-with-face (mapconcat 'identity (seq-take names 5) ", ") inspire-author-face)
+	   (inspire--insert-with-face (mapconcat #'identity (seq-take names 5) ", ") inspire-author-face)
 	   (when (> (length names) 5)
 	     (inspire--insert-with-face " et al." inspire-author-face))))
        (inspire--insert-with-face (format "\n %s \n\n"(alist-get 'date entry)) inspire-date-face)))
@@ -841,10 +842,10 @@ ENTRY is an alist containing all the relevant data for the record."
 			 'mouse-face 'highlight
 			 'follow-link t
 			 'help-echo (format "Look up profile: author/%s" (alist-get 'recid author)))
-	(inspire--insert-with-face (alist-get 'name author)))
+	(inspire--insert-with-face (alist-get 'name author) '(:inherit inspire-author-face :underline t :height 1.1)))
       (when (alist-get 'affiliation author)
 	(inspire--insert-with-face
-	 (format " (%s)" (mapconcat 'identity (alist-get 'affiliation author) ", "))
+	 (format " (%s)" (mapconcat #'identity (alist-get 'affiliation author) ", "))
 	 '(:inherit inspire-author-face :height 1.0)))
       (inspire--insert-with-face ", " inspire-author-face))
       (delete-char -2))
@@ -855,9 +856,9 @@ ENTRY is an alist containing all the relevant data for the record."
     (inspire--insert-with-face (format "%s Pages\n" pages) inspire-subfield-face))
   (inspire--insert-with-face (format "Type: %s\n" (alist-get 'type entry)) inspire-subfield-face)
   (when-let (journals (alist-get 'journals entry))
-    (inspire--insert-with-face (format "Published in: %s\n" (mapconcat 'identity journals ", ")) inspire-subfield-face))
+    (inspire--insert-with-face (format "Published in: %s\n" (mapconcat #'identity journals ", ")) inspire-subfield-face))
   (when-let (conferences (alist-get 'conferences entry))
-    (inspire--insert-with-face (format "Contribution to: %s\n" (mapconcat 'identity conferences ", ")) inspire-subfield-face))
+    (inspire--insert-with-face (format "Contribution to: %s\n" (mapconcat #'identity conferences ", ")) inspire-subfield-face))
   (when-let (eprint (alist-get 'eprint entry))
     (inspire--insert-with-face "e-print: " inspire-subfield-face)
     (inspire--insert-url (alist-get 'value eprint) (format "https://arxiv.org/abs/%s" (alist-get 'value eprint)))
@@ -980,11 +981,11 @@ containing literature information."
       
       (when-let ((code (alist-get 'status root))
 		 (mess (alist-get 'message root)))
-	(error (format "Error %s: %s." code mess)))
+	(error "Error %s: %s" code mess))
       
       (seq-doseq (entry hits)
 	(let ((metadata (alist-get 'metadata entry))
-	      (title) (authors) (collaborations) (date) (files) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
+	      (title) (authors_) (collaborations) (date) (files) (journals) (conferences) (dois) (bib-link) (bib-key) (abstract) (eprint) (citation-count) (reference-count) (number-of-pages) (note) (type) (inspire-id))
 	  (setq inspire-query-total-hits total)
 	  (setq bib-link (map-nested-elt entry '(links bibtex)))
 	  (setq bib-key (map-nested-elt metadata '(texkeys 0)))
@@ -1001,7 +1002,7 @@ containing literature information."
 	  (setq inspire-id (alist-get 'id entry))
 	  (setq collaborations (and (alist-get 'collaborations metadata)
 				    (seq-map (lambda (elem) (alist-get 'value elem)) (alist-get 'collaborations metadata))))
-	  (setq authors (seq-map
+	  (setq authors_ (seq-map
 			 (lambda (elem) `((name . ,(inspire--reorder-name (alist-get 'full_name elem)))
 				     (affiliation . ,(mapcar (lambda (aff) (alist-get 'value aff)) (alist-get 'affiliations elem)))
 				     (recid . ,(alist-get 'recid elem))))
@@ -1035,7 +1036,7 @@ containing literature information."
 		    files)))
 	  
 	  (setq alist-entry `((title . ,title)
-			      (authors . ,authors)
+			      ,(cons 'authors authors_) ; for a clean package-lint
 			      (collaborations . ,collaborations)
 			      (date . ,date)
 			      (journals . ,(nreverse journals))
@@ -1069,7 +1070,7 @@ return a list of alists with each entry formatted as above."
     (let ((root (json-parse-buffer :object-type'alist)))
       (when-let ((code (alist-get 'status root))
 		 (mess (alist-get 'message root)))
-	(error (format "Error %s: %s." code mess)))
+	(error "Error %s: %s" code mess))
       (if (assoc 'metadata root)
 	  (inspire--parse-author-entry root) ; single author record
 	(seq-map
@@ -1087,7 +1088,7 @@ return a list of alists with each entry formatted as above."
     (setq name (or (map-nested-elt metadata '(name preferred_name))
 		   (inspire--reorder-name (map-nested-elt metadata '(name value)))))
     (when-let ((nat (map-nested-elt metadata '(name native_names))))
-      (setq native-names (mapconcat 'identity nat ", ")))
+      (setq native-names (mapconcat #'identity nat ", ")))
     (when-let ((advs (seq-filter (lambda (x) (not (eq (alist-get 'hidden x) t))) (alist-get 'advisors metadata))))
       (seq-do (lambda (adv)
 		(let* ((type  (alist-get 'degree_type adv))
@@ -1126,7 +1127,7 @@ return a list of alists with each entry formatted as above."
 			(push `((rank . ,rank) (institution . ,inst) (date . ,(format "%s" end))) positions))))))
 	      pos-list)
       (setq positions (nreverse positions))
-      (setq current-position (and current-position (mapconcat 'identity (nreverse current-position) " and "))))
+      (setq current-position (and current-position (mapconcat #'identity (nreverse current-position) " and "))))
     
     `((inspire-bai . ,inspire-bai)
       (orcid . ,orcid)
@@ -1140,6 +1141,7 @@ return a list of alists with each entry formatted as above."
       (positions . ,positions)
       (current-position . ,current-position)
       (timestamp . ,timestamp))))
+
 (defun inspire--reorder-name (full-name)
   "Helper function for translating the author names.
 Recast string FULL-NAME from \"last_name, first_name\"
