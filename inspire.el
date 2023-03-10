@@ -1,4 +1,4 @@
-;;; inspire.el --- Emacs interface for inspirehep.net  -*- lexical-binding: t; -*-
+;;; inspire.el --- an interface for inspirehep.net  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Simon Lin
 
@@ -33,7 +33,8 @@
 ;; inspire.el provides two main entry functions for searching on inspirehep:
 ;; `inspire-literature-search` for literature lookup,
 ;; and `inspire-author-search` for author lookup.
-;; inspire.el will then pop-up a list of records where one can browse and examine detailed information for each record.
+;; inspire.el will then pop-up a list of records where one can browse and examine
+;; detailed information for each record.
 ;; The SPIRES syntax (https://help.inspirehep.net/knowledge-base/inspire-paper-search)
 ;; is available for `inspire-literature-search` function.
 
@@ -47,10 +48,12 @@
 ;; `a` `inspire-record-author-lookup` : look up for a author profile in current record
 ;; `r` `inspire-reference-search` : look up for references of the current record
 ;; `c` `inspire-citation-search` : look up for citations of the current record
-;; `[` `inspire-previous-search`, `]` `inspire-next-search` : navigate through the search history
+;; `[` `inspire-previous-search`
+;; `]` `inspire-next-search` : navigate through the search history
 ;; `q` `inspire-exit` : exit the record list
 
-;; Some texts in the record or author information buffer are clickable and will preform corresponding action when clicked upon.
+;; Some texts in the record or author information buffer are clickable and will preform
+;; corresponding action when clicked upon.
 
 ;;; Code:
 
@@ -254,8 +257,8 @@
     (define-key map (kbd "a") #'inspire-record-author-lookup)
     (define-key map (kbd "r") #'inspire-reference-search)
     (define-key map (kbd "c") #'inspire-citation-search)
-    (define-key map (kbd "\[") #'inspire-previous-search)
-    (define-key map (kbd "\]") #'inspire-next-search)
+    (define-key map (kbd "[") #'inspire-previous-search)
+    (define-key map (kbd "]") #'inspire-next-search)
     map))
 
 (defvar inspire-record-mode-map
@@ -270,8 +273,8 @@
     (define-key map (kbd "a") #'inspire-record-author-lookup)
     (define-key map (kbd "r") #'inspire-reference-search)
     (define-key map (kbd "c") #'inspire-citation-search)
-    (define-key map (kbd "\[") #'inspire-previous-search)
-    (define-key map (kbd "\]") #'inspire-next-search)
+    (define-key map (kbd "[") #'inspire-previous-search)
+    (define-key map (kbd "]") #'inspire-next-search)
     map))
 
 (defvar inspire-author-mode-map
@@ -279,8 +282,8 @@
     (define-key map (kbd "RET") #'inspire-open-url)
     (define-key map (kbd "u") #'inspire-open-url)
     (define-key map (kbd "q") #'inspire-exit)
-    (define-key map (kbd "\[") #'inspire-previous-search)
-    (define-key map (kbd "\]") #'inspire-next-search)
+    (define-key map (kbd "[") #'inspire-previous-search)
+    (define-key map (kbd "]") #'inspire-next-search)
     map))
 
 (define-derived-mode inspire-mode special-mode "inspire"

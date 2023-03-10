@@ -2,6 +2,8 @@
 #+CREATOR: Simon Lin
 #+OPTIONS: toc:nil
 
+    [[https://melpa.org/#/inspire][file:https://melpa.org/packages/inspire-badge.svg]]
+
 inspire.el is an Emacs interface for literature and references searching on the high energy article database [[https://inspirehep.net][inspirehep]].
 
 [[./screenshot.png]]
@@ -27,6 +29,18 @@ Other useful commands and their default bindings:
 + ~q (inspire-exit)~: exit the record list
 
 Some texts in the record or author information buffer are clickable and will preform corresponding action when clicked upon.
+
+* Installation
+inspire.el is available on MELPA. After installing from ~package-install~, put the following code in your init file:
+#+begin_src elisp
+  (require inspire)
+#+end_src
+Or if you use ~use-package~, you can simply put:
+#+begin_src elisp
+  (use-package inspire
+    :ensure t)
+#+end_src
+and ~use-package~ will automatically download the package for you.
 
 * Customization
 Various options of inspire.el are located in the customize group named ~inspire~. You can also set the variables directly:
