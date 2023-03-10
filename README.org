@@ -33,7 +33,7 @@ Some texts in the record or author information buffer are clickable and will pre
 * Installation
 inspire.el is available on MELPA. After installing from ~package-install~, put the following code in your init file:
 #+begin_src elisp
-  (require inspire)
+  (require 'inspire)
 #+end_src
 Or if you use ~use-package~, you can simply put:
 #+begin_src elisp
