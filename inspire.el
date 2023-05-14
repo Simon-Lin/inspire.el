@@ -553,7 +553,8 @@ With ARG, move to the previous nth entry."
 			   inspire-query-string))))
     (save-excursion
       (goto-char (point-max))
-      (inspire--fill-page (1- lbound)))))
+      (let ((buffer-read-only nil))
+	(inspire--fill-page (1- lbound))))))
 
 (defun inspire-open-url (&optional field)
   "Open the corresponding inspire web page according to FIELD.
